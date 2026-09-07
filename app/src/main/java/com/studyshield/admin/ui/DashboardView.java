@@ -8,7 +8,6 @@ import com.vaadin.flow.component.html.H2;
 import com.vaadin.flow.component.html.Span;
 import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
-import com.vaadin.flow.component.page.Push;
 import com.vaadin.flow.router.PageTitle;
 import com.vaadin.flow.router.Route;
 import jakarta.annotation.security.PermitAll;
@@ -21,7 +20,6 @@ import java.util.concurrent.CompletableFuture;
 @Route(value = "dashboard", layout = MainLayout.class)
 @PageTitle("Dashboard")
 @PermitAll
-@Push
 public class DashboardView extends VerticalLayout {
 
     private static final List<String> TABLES = List.of(
