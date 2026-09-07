@@ -31,13 +31,13 @@ public class BackendDataService {
     private volatile String bearerToken;
     private volatile long lastAuthAttempt = 0L;
 
-    public BackendDataService(BackendApiProperties properties, ObjectMapper objectMapper) {
+    public BackendDataService(BackendApiProperties properties, ObjectMapper objectMapper, RestClient.Builder builder) {
         this.properties = properties;
         this.objectMapper = objectMapper;
         SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
         requestFactory.setConnectTimeout(properties.getConnectTimeoutMs());
         requestFactory.setReadTimeout(properties.getReadTimeoutMs());
-        this.restClient = RestClient.builder()
+        this.restClient = builder
                 .baseUrl(properties.getBaseUrl())
                 .defaultHeader(HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON_VALUE)
                 .requestFactory(requestFactory)
@@ -95,6 +95,7 @@ public class BackendDataService {
 
     public void invalidateToken() {
         bearerToken = null;
+        lastAuthAttempt = 0L;
     }
 
     public List<Map<String, Object>> list(String collection) {
@@ -113,6 +114,7 @@ public class BackendDataService {
                     ex.getStatusCode().value(), ex.getStatusCode());
             return List.of();
         } catch (Exception ex) {
+            log.warn("GET /api/v1/{} failed: {}", collection, ex.toString());
             return List.of();
         }
     }
@@ -133,6 +135,7 @@ public class BackendDataService {
                     ex.getStatusCode().value(), ex.getStatusCode());
             return new LinkedHashMap<>();
         } catch (Exception ex) {
+            log.warn("GET /api/v1/{}/{} failed: {}", collection, id, ex.toString());
             return new LinkedHashMap<>();
         }
     }
@@ -154,6 +157,7 @@ public class BackendDataService {
                     ex.getStatusCode().value(), ex.getStatusCode());
             return List.of();
         } catch (Exception ex) {
+            log.warn("GET /api/v1/{}/{}/{} failed: {}", collection, childPath, parentId, ex.toString());
             return List.of();
         }
     }
@@ -175,6 +179,7 @@ public class BackendDataService {
                     ex.getStatusCode().value(), ex.getStatusCode());
             return List.of();
         } catch (Exception ex) {
+            log.warn("GET /api/v1/{}/{}/{} failed: {}", path, childPath, parentId, ex.toString());
             return List.of();
         }
     }
