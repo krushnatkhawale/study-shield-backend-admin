@@ -17,4 +17,6 @@ vaadin:
 
 studyshield:
   backend:
-    base-url: ${STUDYSHIELD_BACKEND_URL:http://localhost:8080}
+    base-url: ${STUDYSHIELD_BACKEND_URL:https://study-shield-backend-komv.onrender.com}
+    connect-timeout-ms: ${STUDYSHIELD_BACKEND_CONNECT_TIMEOUT_MS:5000}
+    read-timeout-ms: ${STUDYSHIELD_BACKEND_READ_TIMEOUT_MS:10000}
