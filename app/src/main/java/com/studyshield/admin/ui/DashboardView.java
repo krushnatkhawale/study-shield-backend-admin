@@ -1,20 +1,27 @@
 package com.studyshield.admin.ui;
 
+import com.studyshield.admin.config.BackendApiProperties;
 import com.studyshield.admin.service.BackendDataService;
+import com.vaadin.flow.component.UI;
 import com.vaadin.flow.component.grid.Grid;
 import com.vaadin.flow.component.html.H2;
 import com.vaadin.flow.component.html.Span;
 import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
+import com.vaadin.flow.component.page.Push;
 import com.vaadin.flow.router.PageTitle;
 import com.vaadin.flow.router.Route;
 import jakarta.annotation.security.PermitAll;
 
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 
 @Route(value = "dashboard", layout = MainLayout.class)
 @PageTitle("Dashboard")
 @PermitAll
+@Push
 public class DashboardView extends VerticalLayout {
 
     private static final List<String> TABLES = List.of(
@@ -34,8 +41,10 @@ public class DashboardView extends VerticalLayout {
     );
 
     private final BackendDataService backendDataService;
+    private final HorizontalLayout summary = new HorizontalLayout();
+    private final Span loading = new Span("Loading backend counts…");
 
-    public DashboardView(BackendDataService backendDataService) {
+    public DashboardView(BackendDataService backendDataService, BackendApiProperties backendApiProperties) {
         this.backendDataService = backendDataService;
         setPadding(true);
         setSpacing(true);
@@ -44,7 +53,7 @@ public class DashboardView extends VerticalLayout {
 
         HorizontalLayout stats = new HorizontalLayout(
                 statusCard("Backend", "StudyShield modulith"),
-                statusCard("API", "http://localhost:8080"),
+                statusCard("API", backendApiProperties.getBaseUrl()),
                 statusCard("Collections", String.valueOf(TABLES.size())),
                 statusCard("Mode", "CRUD admin")
         );
@@ -60,14 +69,38 @@ public class DashboardView extends VerticalLayout {
 
         add(new H2("Backend data overview"));
 
-        HorizontalLayout summary = new HorizontalLayout();
-        for (String table : TABLES) {
-            int count = backendDataService.list(table).size();
-            summary.add(statusCard(table, String.valueOf(count)));
-        }
         summary.setWidthFull();
         summary.getStyle().set("flex-wrap", "wrap");
+        loading.getStyle().set("color", "var(--lumo-secondary-text-color)");
+        summary.add(loading);
         add(summary);
+
+        loadCountsAsync();
+    }
+
+    /**
+     * Fetch row counts off the UI thread so the page renders immediately even when the backend is
+     * slow or unreachable; each call is bounded by the configured connect/read timeouts.
+     */
+    private void loadCountsAsync() {
+        UI ui = UI.getCurrent();
+        CompletableFuture.supplyAsync(() -> {
+            Map<String, Integer> counts = new LinkedHashMap<>();
+            TABLES.parallelStream().forEach(table ->
+                    counts.put(table, backendDataService.list(table).size()));
+            return counts;
+        }).thenAccept(counts -> {
+            try {
+                ui.access(() -> {
+                    summary.remove(loading);
+                    for (Map.Entry<String, Integer> entry : counts.entrySet()) {
+                        summary.add(statusCard(entry.getKey(), String.valueOf(entry.getValue())));
+                    }
+                });
+            } catch (Exception ex) {
+                // UI already closed; nothing to update.
+            }
+        });
     }
 
     private Span statusCard(String label, String value) {

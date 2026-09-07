@@ -65,7 +65,7 @@ public class QuizManagementView extends VerticalLayout {
 
         subjectSelect.setLabel("Subject");
         subjectSelect.setItemLabelGenerator(item -> String.valueOf(item.getOrDefault("name", "?")));
-        subjectSelect.setItems(loadSubjectsForPacks());
+        subjectSelect.setItems(backendDataService.list("subjects"));
         subjectSelect.addValueChangeListener(e -> loadQuizzes(e.getValue()));
 
         grid.addColumn(item -> item.getOrDefault("id", "-")).setHeader("ID").setWidth("70px");
@@ -92,23 +92,6 @@ public class QuizManagementView extends VerticalLayout {
         saveButton.addClickListener(e -> saveQuiz());
 
         add(subjectSelect, grid, editor, new HorizontalLayout(newButton, saveButton));
-    }
-
-    private List<Map<String, Object>> loadSubjectsForPacks() {
-        List<Map<String, Object>> subjects = backendDataService.list("subjects");
-        List<Map<String, Object>> withPacks = new ArrayList<>();
-        for (Map<String, Object> subject : subjects) {
-            Object id = subject.get("id");
-            if (id == null) {
-                continue;
-            }
-            List<Map<String, Object>> packs = backendDataService.listBy("content-packs", "subject",
-                    Long.valueOf(String.valueOf(id)));
-            if (!packs.isEmpty()) {
-                withPacks.add(subject);
-            }
-        }
-        return withPacks;
     }
 
     private void loadQuizzes(Map<String, Object> subject) {
