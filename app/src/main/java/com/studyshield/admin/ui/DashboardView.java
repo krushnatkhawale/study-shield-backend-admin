@@ -31,6 +31,7 @@ public class DashboardView extends VerticalLayout {
             "questions",
             "quiz-bundles",
             "users",
+            "admin-users",
             "quiz-attempts",
             "quiz-results",
             "tv-users",

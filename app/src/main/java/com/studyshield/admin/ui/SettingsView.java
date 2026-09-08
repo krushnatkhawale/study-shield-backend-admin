@@ -37,6 +37,7 @@ public class SettingsView extends VerticalLayout {
             "questions",
             "quiz-bundles",
             "users",
+            "admin-users",
             "parents",
             "students",
             "children",

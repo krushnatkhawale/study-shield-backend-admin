@@ -9,6 +9,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
+import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
@@ -73,7 +74,7 @@ public class BackendDataService {
                         "loginId", properties.getUsername(),
                         "password", properties.getPassword()));
                 String body = restClient.post()
-                        .uri("/api/auth/signin")
+                        .uri("/api/auth/admin-signin")
                         .contentType(MediaType.APPLICATION_JSON)
                         .body(json)
                         .retrieve()
@@ -97,6 +98,41 @@ public class BackendDataService {
         bearerToken = null;
         lastAuthAttempt = 0L;
     }
+
+    /**
+     * Verifies admin credentials against the backend and adopts the admin session token
+     * for all subsequent API calls. Used by the login flow (replaces local in-memory users).
+     */
+    public AuthenticatedAdmin authenticateAdmin(String loginId, String password) {
+        try {
+            String json = objectMapper.writeValueAsString(Map.of(
+                    "loginId", loginId,
+                    "password", password));
+            String body = restClient.post()
+                    .uri("/api/auth/admin-signin")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(json)
+                    .retrieve()
+                    .body(String.class);
+            JsonNode node = objectMapper.readTree(body);
+            if (node.hasNonNull("sessionId") && !node.path("sessionId").asText().isBlank()) {
+                bearerToken = node.path("sessionId").asText();
+                lastAuthAttempt = 0L;
+                log.info("Admin sign-in ok (loginId={})", loginId);
+                return new AuthenticatedAdmin(
+                        node.path("accountId").asText(), loginId, bearerToken);
+            }
+            String reason = node.path("message").asText(
+                    node.path("errorCode").asText("Sign in rejected"));
+            throw new BadCredentialsException(reason);
+        } catch (BadCredentialsException ex) {
+            throw ex;
+        } catch (Exception ex) {
+            throw new BadCredentialsException("Could not reach the backend sign-in endpoint", ex);
+        }
+    }
+
+    public record AuthenticatedAdmin(String accountId, String loginId, String sessionToken) {}
 
     public List<Map<String, Object>> list(String collection) {
         try {

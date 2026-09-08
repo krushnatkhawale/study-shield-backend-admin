@@ -32,7 +32,7 @@ class BackendDataServiceAuthTests {
     void setUp() throws IOException {
         server = HttpServer.create(new InetSocketAddress(0), 0);
         server.setExecutor(Executors.newSingleThreadExecutor());
-        server.createContext("/api/auth/signin", exchange -> {
+        server.createContext("/api/auth/admin-signin", exchange -> {
             exchange.getRequestBody().readAllBytes();
             signInCalls.incrementAndGet();
             respond(exchange, 200, "{\"sessionId\":\"tok-live-123\",\"loginId\":\"good@example.com\"}");

@@ -1,9 +1,9 @@
 package com.studyshield.admin.config;
 
+import com.studyshield.admin.security.BackendAuthenticationProvider;
 import com.vaadin.flow.spring.security.VaadinWebSecurity;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.core.userdetails.User;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -16,6 +16,12 @@ import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
 @Configuration
 public class SecurityConfiguration extends VaadinWebSecurity {
 
+    private final BackendAuthenticationProvider backendAuthenticationProvider;
+
+    public SecurityConfiguration(BackendAuthenticationProvider backendAuthenticationProvider) {
+        this.backendAuthenticationProvider = backendAuthenticationProvider;
+    }
+
     @Bean
     public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
@@ -23,17 +29,11 @@ public class SecurityConfiguration extends VaadinWebSecurity {
 
     @Bean
     public UserDetailsService userDetailsService(PasswordEncoder passwordEncoder) {
-        UserDetails admin = User.withUsername("admin")
-                .password(passwordEncoder.encode("admin123"))
-                .roles("ADMIN")
-                .build();
-
-        UserDetails operator = User.withUsername("operator")
-                .password(passwordEncoder.encode("operator123"))
-                .roles("ADMIN")
-                .build();
-
-        return new InMemoryUserDetailsManager(admin, operator);
+        // Placeholder so Spring Boot auto-config does not supply an in-memory
+        // default. Real authentication is handled entirely by
+        // BackendAuthenticationProvider; form-login credentials go straight
+        // to that provider.
+        return new InMemoryUserDetailsManager();
     }
 
     @Override
