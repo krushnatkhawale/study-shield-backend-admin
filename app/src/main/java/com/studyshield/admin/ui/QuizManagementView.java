@@ -2,10 +2,13 @@ package com.studyshield.admin.ui;
 
 import com.studyshield.admin.service.BackendDataService;
 import com.vaadin.flow.component.button.Button;
+import com.vaadin.flow.component.button.ButtonVariant;
 import com.vaadin.flow.component.combobox.ComboBox;
+import com.vaadin.flow.component.dialog.Dialog;
 import com.vaadin.flow.component.formlayout.FormLayout;
 import com.vaadin.flow.component.grid.Grid;
 import com.vaadin.flow.component.html.H2;
+import com.vaadin.flow.component.html.H4;
 import com.vaadin.flow.component.notification.Notification;
 import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
@@ -53,6 +56,9 @@ public class QuizManagementView extends VerticalLayout {
     private final Button saveButton = new Button("Save quiz");
     private final Button newButton = new Button("New quiz");
 
+    private final Grid<Map<String, Object>> questionGrid = new Grid<>();
+    private final Button addQuestionButton = new Button("Add question");
+
     private Map<String, Object> selected;
 
     public QuizManagementView(BackendDataService backendDataService) {
@@ -60,7 +66,7 @@ public class QuizManagementView extends VerticalLayout {
 
         setPadding(true);
         setSpacing(true);
-        setSizeFull();
+        setWidthFull();
         add(new H2("Quiz management"));
 
         subjectSelect.setLabel("Subject");
@@ -91,7 +97,20 @@ public class QuizManagementView extends VerticalLayout {
         newButton.addClickListener(e -> resetEditor(null));
         saveButton.addClickListener(e -> saveQuiz());
 
-        add(subjectSelect, grid, editor, new HorizontalLayout(newButton, saveButton));
+        questionGrid.addColumn(item -> item.getOrDefault("id", "-")).setHeader("ID").setWidth("70px");
+        questionGrid.addColumn(item -> item.getOrDefault("questionText", "-")).setHeader("Question");
+        questionGrid.addColumn(item -> "v" + item.getOrDefault("version", "1")).setHeader("Version").setWidth("90px");
+        questionGrid.addComponentColumn(this::questionActions).setHeader("Actions").setWidth("180px");
+        questionGrid.setHeight("500px");
+
+        addQuestionButton.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
+        addQuestionButton.addClickListener(e -> openAddQuestion());
+
+        HorizontalLayout questionSection = new HorizontalLayout(new H4("Questions in this quiz"), addQuestionButton);
+        questionSection.setAlignItems(Alignment.CENTER);
+
+        add(subjectSelect, grid, editor, new HorizontalLayout(newButton, saveButton),
+                questionSection, questionGrid);
     }
 
     private void loadQuizzes(Map<String, Object> subject) {
@@ -129,6 +148,83 @@ public class QuizManagementView extends VerticalLayout {
         freemiumIndexField.setValue(toIntObj(quiz.get("freemiumIndex")));
         languageField.setValue(String.valueOf(quiz.getOrDefault("language", "English")));
         activeField.setValue(Boolean.parseBoolean(String.valueOf(quiz.getOrDefault("active", true))));
+        loadQuizQuestions(quiz);
+    }
+
+    private void loadQuizQuestions(Map<String, Object> quiz) {
+        questionGrid.setItems(List.of());
+        if (quiz == null || quiz.get("id") == null) {
+            return;
+        }
+        Long quizId = Long.valueOf(String.valueOf(quiz.get("id")));
+        questionGrid.setItems(backendDataService.listByPath("questions", "quiz", quizId));
+    }
+
+    private HorizontalLayout questionActions(Map<String, Object> question) {
+        Button edit = new Button("Edit");
+        edit.addClickListener(e -> openEditQuestion(question));
+
+        Button remove = new Button("Remove");
+        remove.addThemeVariants(ButtonVariant.LUMO_ERROR);
+        remove.addClickListener(e -> confirmRemoveQuestion(question));
+
+        HorizontalLayout actions = new HorizontalLayout(edit, remove);
+        actions.setSpacing(true);
+        actions.setPadding(false);
+        return actions;
+    }
+
+    private void openEditQuestion(Map<String, Object> question) {
+        if (selected == null || selected.get("id") == null) {
+            Notification.show("Select a quiz first to edit a question");
+            return;
+        }
+        Long quizId = Long.valueOf(String.valueOf(selected.get("id")));
+        new QuestionEditorDialog(backendDataService, quizId, question,
+                () -> loadQuizQuestions(selected)).open();
+    }
+
+    private void confirmRemoveQuestion(Map<String, Object> question) {
+        Dialog dialog = new Dialog();
+        dialog.setHeaderTitle("Remove question from quiz?");
+        dialog.setModal(true);
+
+        Button remove = new Button("Remove question (deletes all its versions)");
+        remove.addThemeVariants(ButtonVariant.LUMO_ERROR);
+        remove.addClickListener(e -> {
+            dialog.close();
+            removeQuestion(question);
+        });
+        Button cancel = new Button("Cancel", e -> dialog.close());
+
+        HorizontalLayout actions = new HorizontalLayout();
+        actions.setWidthFull();
+        actions.setJustifyContentMode(JustifyContentMode.END);
+        actions.add(remove, cancel);
+
+        dialog.add(actions);
+        dialog.open();
+    }
+
+    private void removeQuestion(Map<String, Object> question) {
+        try {
+            Long id = Long.valueOf(String.valueOf(question.get("id")));
+            backendDataService.delete("questions", id);
+            Notification.show("Question removed");
+            loadQuizQuestions(selected);
+        } catch (Exception ex) {
+            Notification.show("Remove failed: " + ex.getMessage());
+        }
+    }
+
+    private void openAddQuestion() {
+        if (selected == null || selected.get("id") == null) {
+            Notification.show("Select a quiz first to add a question");
+            return;
+        }
+        Long quizId = Long.valueOf(String.valueOf(selected.get("id")));
+        new QuestionEditorDialog(backendDataService, quizId, null,
+                () -> loadQuizQuestions(selected)).open();
     }
 
     private void resetEditor(Map<String, Object> subject) {
@@ -141,6 +237,7 @@ public class QuizManagementView extends VerticalLayout {
         freemiumIndexField.setValue(1);
         languageField.setValue("English");
         activeField.setValue(true);
+        questionGrid.setItems(List.of());
     }
 
     private void saveQuiz() {

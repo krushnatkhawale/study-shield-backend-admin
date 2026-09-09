@@ -2,70 +2,49 @@ package com.studyshield.admin.ui;
 
 import com.studyshield.admin.service.BackendDataService;
 import com.vaadin.flow.component.button.Button;
-import com.vaadin.flow.component.checkbox.Checkbox;
+import com.vaadin.flow.component.button.ButtonVariant;
 import com.vaadin.flow.component.combobox.ComboBox;
-import com.vaadin.flow.component.formlayout.FormLayout;
+import com.vaadin.flow.component.dialog.Dialog;
 import com.vaadin.flow.component.grid.Grid;
 import com.vaadin.flow.component.html.H2;
 import com.vaadin.flow.component.notification.Notification;
 import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
-import com.vaadin.flow.component.textfield.IntegerField;
-import com.vaadin.flow.component.textfield.TextArea;
-import com.vaadin.flow.component.textfield.TextField;
 import com.vaadin.flow.router.PageTitle;
 import com.vaadin.flow.router.Route;
 import jakarta.annotation.security.RolesAllowed;
 
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 /**
- * Add and edit questions inside a quiz. Pick a subject, then a quiz, then edit its questions.
- * Options are entered as lines; the option (A/B/C/D) holding the correct answer is picked by
- * selecting the matching option id below.
+ * Manage the questions of a quiz. Questions are listed in a table with per-row Edit / Delete
+ * buttons. Edit opens the question in a popup; saving an edit creates a new version of the
+ * question, and the latest version is always the one a quiz serves. The popup also lists every
+ * revision of the question for inspection or restore.
  */
 @Route(value = "questions", layout = MainLayout.class)
 @PageTitle("Question management")
 @RolesAllowed("ADMIN")
 public class QuestionManagementView extends VerticalLayout {
 
-    private static final List<String> QUESTION_TYPES = List.of("SINGLE_CHOICE", "MULTIPLE_CHOICE", "TRUE_FALSE");
-    private static final List<String> DIFFICULTIES = List.of("EASY", "MEDIUM", "HARD");
-    private static final List<String> OPTION_IDS = List.of("a", "b", "c", "d");
-
     private final BackendDataService backendDataService;
 
     private final ComboBox<Map<String, Object>> subjectSelect = new ComboBox<>();
     private final ComboBox<Map<String, Object>> quizSelect = new ComboBox<>();
     private final Grid<Map<String, Object>> grid = new Grid<>();
-    private final FormLayout editor = new FormLayout();
 
-    private final TextArea questionText = new TextArea("Question text");
-    private final ComboBox<String> questionType = new ComboBox<>("Type");
-    private final TextArea optionsText = new TextArea("Options (one per line, A-D)");
-    private final ComboBox<String> correctAnswer = new ComboBox<>("Correct answer option");
-    private final ComboBox<String> difficulty = new ComboBox<>("Difficulty");
-    private final IntegerField points = new IntegerField("Points");
-    private final IntegerField orderIndex = new IntegerField("Order");
-    private final Checkbox blacklisted = new Checkbox("Blacklisted");
-
-    private final Button saveButton = new Button("Save question");
     private final Button newButton = new Button("New question");
 
     private List<Map<String, Object>> quizList = new ArrayList<>();
-    private Map<String, Object> selected;
 
     public QuestionManagementView(BackendDataService backendDataService) {
         this.backendDataService = backendDataService;
 
         setPadding(true);
         setSpacing(true);
-        setSizeFull();
+        setWidthFull();
         add(new H2("Question management"));
 
         subjectSelect.setLabel("Subject");
@@ -80,32 +59,38 @@ public class QuestionManagementView extends VerticalLayout {
         grid.addColumn(item -> item.getOrDefault("id", "-")).setHeader("ID").setWidth("70px");
         grid.addColumn(item -> item.getOrDefault("questionText", "-")).setHeader("Question");
         grid.addColumn(item -> item.getOrDefault("questionType", "-")).setHeader("Type");
-        grid.setSelectionMode(Grid.SelectionMode.SINGLE);
-        grid.asSingleSelect().addValueChangeListener(event -> loadIntoEditor(event.getValue()));
-        grid.setHeight("300px");
+        grid.addColumn(item -> item.getOrDefault("difficulty", "-")).setHeader("Difficulty");
+        grid.addColumn(item -> "v" + item.getOrDefault("version", "1")).setHeader("Version").setWidth("90px");
+        grid.addComponentColumn(this::actionsFor).setHeader("Actions").setWidth("180px");
+        grid.setHeight("400px");
 
-        questionType.setItems(QUESTION_TYPES);
-        correctAnswer.setItems(OPTION_IDS);
-        difficulty.setItems(DIFFICULTIES);
-        questionType.setValue("SINGLE_CHOICE");
-        difficulty.setValue("EASY");
-        points.setValue(1);
-        orderIndex.setValue(0);
+        newButton.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
+        newButton.addClickListener(e -> openEditor(null));
 
-        editor.add(questionText, questionType, optionsText, correctAnswer, difficulty, points, orderIndex, blacklisted);
-        editor.setResponsiveSteps(new FormLayout.ResponsiveStep("0", 2));
+        HorizontalLayout toolbar = new HorizontalLayout(subjectSelect, quizSelect, newButton);
+        toolbar.setVerticalComponentAlignment(Alignment.END, newButton);
 
-        newButton.addClickListener(e -> resetEditor());
-        saveButton.addClickListener(e -> saveQuestion());
+        add(toolbar, grid);
+    }
 
-        add(subjectSelect, quizSelect, grid, editor, new HorizontalLayout(newButton, saveButton));
+    private HorizontalLayout actionsFor(Map<String, Object> question) {
+        Button edit = new Button("Edit");
+        edit.addClickListener(e -> openEditor(question));
+
+        Button delete = new Button("Delete");
+        delete.addThemeVariants(ButtonVariant.LUMO_ERROR);
+        delete.addClickListener(e -> confirmDelete(question));
+
+        HorizontalLayout actions = new HorizontalLayout(edit, delete);
+        actions.setPadding(false);
+        return actions;
     }
 
     private void loadQuizzes(Map<String, Object> subject) {
         quizList.clear();
         quizSelect.clear();
+        grid.setItems(List.of());
         if (subject == null || subject.get("id") == null) {
-            grid.setItems(List.of());
             return;
         }
         Long subjectId = Long.valueOf(String.valueOf(subject.get("id")));
@@ -126,114 +111,49 @@ public class QuestionManagementView extends VerticalLayout {
             return;
         }
         Long quizId = Long.valueOf(String.valueOf(quiz.get("id")));
-        List<Map<String, Object>> questions = backendDataService.listByPath("questions", "quiz", quizId);
-        grid.setItems(questions);
-        if (!questions.isEmpty()) {
-            grid.select(questions.getFirst());
-        }
+        grid.setItems(backendDataService.listByPath("questions", "quiz", quizId));
     }
 
-    @SuppressWarnings("unchecked")
-    private void loadIntoEditor(Map<String, Object> question) {
-        if (question == null || question.isEmpty()) {
-            return;
-        }
-        selected = question;
-        questionText.setValue(String.valueOf(question.getOrDefault("questionText", "")));
-        questionType.setValue(String.valueOf(question.getOrDefault("questionType", "SINGLE_CHOICE")));
-        difficulty.setValue(String.valueOf(question.getOrDefault("difficulty", "EASY")));
-        points.setValue(toInt(question.get("points")));
-        orderIndex.setValue(toInt(question.get("orderIndex")));
-        blacklisted.setValue(Boolean.parseBoolean(String.valueOf(question.getOrDefault("blacklisted", false))));
-
-        optionsText.clear();
-        Object optionsObj = question.get("options");
-        if (optionsObj instanceof List<?> optionsList) {
-            for (Object o : optionsList) {
-                if (o instanceof Map<?, ?> option) {
-                    optionsText.setValue(optionsText.getValue() + String.valueOf(option.get("text")) + "\n");
-                }
-            }
-        }
-        Object correctObj = question.get("correctAnswers");
-        if (correctObj instanceof List<?> correctList && !correctList.isEmpty()) {
-            correctAnswer.setValue(String.valueOf(correctList.getFirst()));
-        }
-    }
-
-    private void resetEditor() {
-        selected = null;
-        questionText.clear();
-        optionsText.clear();
-        questionType.setValue("SINGLE_CHOICE");
-        difficulty.setValue("EASY");
-        points.setValue(1);
-        orderIndex.setValue(0);
-        blacklisted.setValue(false);
-        correctAnswer.clear();
-    }
-
-    private void saveQuestion() {
-        if (quizSelect.getValue() == null || quizSelect.getValue().get("id") == null) {
+    private void openEditor(Map<String, Object> question) {
+        Map<String, Object> quiz = quizSelect.getValue();
+        if (quiz == null || quiz.get("id") == null) {
             Notification.show("Choose a quiz first");
             return;
         }
-        Long quizId = Long.valueOf(String.valueOf(quizSelect.getValue().get("id")));
-
-        List<Map<String, Object>> options = new ArrayList<>();
-        int idx = 0;
-        for (String line : optionsText.getValue().split("\\n")) {
-            String text = line.trim();
-            if (text.isBlank()) {
-                continue;
-            }
-            Map<String, Object> option = new LinkedHashMap<>();
-            option.put("id", OPTION_IDS.get(Math.min(idx, OPTION_IDS.size() - 1)));
-            option.put("text", text);
-            option.put("imageUrl", null);
-            options.add(option);
-            idx++;
-        }
-
-        Set<String> correct = new LinkedHashSet<>();
-        if (correctAnswer.getValue() != null) {
-            correct.add(correctAnswer.getValue());
-        } else if (!options.isEmpty()) {
-            correct.add(String.valueOf(options.getFirst().get("id")));
-        }
-
-        Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("questionText", questionText.getValue());
-        payload.put("questionType", questionType.getValue());
-        payload.put("options", options);
-        payload.put("correctAnswers", new ArrayList<>(correct));
-        payload.put("difficulty", difficulty.getValue());
-        payload.put("points", points.getValue());
-        payload.put("orderIndex", orderIndex.getValue());
-        payload.put("blacklisted", blacklisted.getValue());
-        payload.put("quizId", quizId);
-        payload.put("active", true);
-
-        try {
-            if (selected != null && selected.get("id") != null) {
-                Long id = Long.valueOf(String.valueOf(selected.get("id")));
-                backendDataService.update("questions", id, payload);
-                Notification.show("Question updated");
-            } else {
-                backendDataService.create("questions", payload);
-                Notification.show("Question created");
-            }
-            loadQuestions(quizSelect.getValue());
-        } catch (Exception ex) {
-            Notification.show("Save failed: " + ex.getMessage());
-        }
+        Long quizId = Long.valueOf(String.valueOf(quiz.get("id")));
+        new QuestionEditorDialog(backendDataService, quizId, question, () -> loadQuestions(quiz)).open();
     }
 
-    private static int toInt(Object value) {
+    private void confirmDelete(Map<String, Object> question) {
+        Dialog dialog = new Dialog();
+        dialog.setHeaderTitle("Delete question?");
+        dialog.setModal(true);
+
+        Button delete = new Button("Delete question and all its versions");
+        delete.addThemeVariants(ButtonVariant.LUMO_ERROR);
+        delete.addClickListener(e -> {
+            dialog.close();
+            deleteQuestion(question);
+        });
+        Button cancel = new Button("Cancel", e -> dialog.close());
+
+        HorizontalLayout actions = new HorizontalLayout();
+        actions.setWidthFull();
+        actions.setJustifyContentMode(JustifyContentMode.END);
+        actions.add(delete, cancel);
+
+        dialog.add(actions);
+        dialog.open();
+    }
+
+    private void deleteQuestion(Map<String, Object> question) {
         try {
-            return Integer.parseInt(String.valueOf(value));
+            Long id = Long.valueOf(String.valueOf(question.get("id")));
+            backendDataService.delete("questions", id);
+            Notification.show("Question deleted");
+            loadQuestions(quizSelect.getValue());
         } catch (Exception ex) {
-            return 0;
+            Notification.show("Delete failed: " + ex.getMessage());
         }
     }
 }

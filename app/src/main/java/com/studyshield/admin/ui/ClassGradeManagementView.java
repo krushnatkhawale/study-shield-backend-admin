@@ -48,7 +48,7 @@ public class ClassGradeManagementView extends VerticalLayout {
 
         setPadding(true);
         setSpacing(true);
-        setSizeFull();
+        setWidthFull();
         add(new H2("Class management"));
 
         boardSelect.setLabel("Board");

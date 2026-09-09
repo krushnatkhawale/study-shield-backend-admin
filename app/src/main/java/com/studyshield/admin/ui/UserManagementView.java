@@ -53,7 +53,7 @@ public class UserManagementView extends VerticalLayout {
 
         setPadding(true);
         setSpacing(true);
-        setSizeFull();
+        setWidthFull();
         add(new H2("User management"));
 
         grid.addColumn(item -> item.getOrDefault("id", "-")).setHeader("ID").setWidth("70px");

@@ -24,6 +24,23 @@ public class BackendDataService {
     private static final Logger log = LoggerFactory.getLogger(BackendDataService.class);
     private static final long AUTH_RETRY_AFTER_MS = 60_000L;
 
+    /** Collections whose list endpoints are legacy mobile resources not under /api/v1. */
+    private static final List<String> NON_V1_COLLECTIONS = List.of("quiz-results", "students");
+
+    private String collectionPath(String collection) {
+        return (NON_V1_COLLECTIONS.contains(collection) ? "/api/" : "/api/v1/") + collection;
+    }
+
+    /**
+     * Clears the shared token only when the failure is an authentication failure (401),
+     * so a missing or broken data endpoint (404/405/500) cannot silently kill the session.
+     */
+    private void invalidateIfAuthFailure(RestClientResponseException ex) {
+        if (ex.getStatusCode().value() == 401) {
+            invalidateToken();
+        }
+    }
+
     private final BackendApiProperties properties;
     private final ObjectMapper objectMapper;
     private final RestClient restClient;
@@ -135,9 +152,10 @@ public class BackendDataService {
     public record AuthenticatedAdmin(String accountId, String loginId, String sessionToken) {}
 
     public List<Map<String, Object>> list(String collection) {
+        String path = collectionPath(collection);
         try {
             String body = restClient.get()
-                    .uri("/api/v1/" + collection)
+                    .uri(path)
                     .retrieve()
                     .body(String.class);
             if (body == null || body.isBlank()) {
@@ -145,12 +163,12 @@ public class BackendDataService {
             }
             return objectMapper.readValue(body, new TypeReference<List<Map<String, Object>>>() {});
         } catch (RestClientResponseException ex) {
-            invalidateToken();
-            log.warn("GET /api/v1/{} failed ({} {})", collection,
+            invalidateIfAuthFailure(ex);
+            log.warn("GET {} failed ({} {})", path,
                     ex.getStatusCode().value(), ex.getStatusCode());
             return List.of();
         } catch (Exception ex) {
-            log.warn("GET /api/v1/{} failed: {}", collection, ex.toString());
+            log.warn("GET {} failed: {}", path, ex.toString());
             return List.of();
         }
     }
@@ -166,13 +184,35 @@ public class BackendDataService {
             }
             return objectMapper.readValue(body, new TypeReference<Map<String, Object>>() {});
         } catch (RestClientResponseException ex) {
-            invalidateToken();
+            invalidateIfAuthFailure(ex);
             log.warn("GET /api/v1/{}/{} failed ({} {})", collection, id,
                     ex.getStatusCode().value(), ex.getStatusCode());
             return new LinkedHashMap<>();
         } catch (Exception ex) {
             log.warn("GET /api/v1/{}/{} failed: {}", collection, id, ex.toString());
             return new LinkedHashMap<>();
+        }
+    }
+
+    /** Full revision history of a question, oldest first. */
+    public List<Map<String, Object>> listRevisions(Long questionId) {
+        try {
+            String body = restClient.get()
+                    .uri("/api/v1/questions/{id}/revisions", questionId)
+                    .retrieve()
+                    .body(String.class);
+            if (body == null || body.isBlank()) {
+                return List.of();
+            }
+            return objectMapper.readValue(body, new TypeReference<List<Map<String, Object>>>() {});
+        } catch (RestClientResponseException ex) {
+            invalidateIfAuthFailure(ex);
+            log.warn("GET /api/v1/questions/{}/revisions failed ({} {})", questionId,
+                    ex.getStatusCode().value(), ex.getStatusCode());
+            return List.of();
+        } catch (Exception ex) {
+            log.warn("GET /api/v1/questions/{}/revisions failed: {}", questionId, ex.toString());
+            return List.of();
         }
     }
 
@@ -188,7 +228,7 @@ public class BackendDataService {
             }
             return objectMapper.readValue(body, new TypeReference<List<Map<String, Object>>>() {});
         } catch (RestClientResponseException ex) {
-            invalidateToken();
+            invalidateIfAuthFailure(ex);
             log.warn("GET /api/v1/{}/{}/{} failed ({} {})", collection, childPath, parentId,
                     ex.getStatusCode().value(), ex.getStatusCode());
             return List.of();
@@ -210,7 +250,7 @@ public class BackendDataService {
             }
             return objectMapper.readValue(body, new TypeReference<List<Map<String, Object>>>() {});
         } catch (RestClientResponseException ex) {
-            invalidateToken();
+            invalidateIfAuthFailure(ex);
             log.warn("GET /api/v1/{}/{}/{} failed ({} {})", path, childPath, parentId,
                     ex.getStatusCode().value(), ex.getStatusCode());
             return List.of();
@@ -234,7 +274,7 @@ public class BackendDataService {
             }
             return objectMapper.readValue(response, new TypeReference<>() {});
         } catch (RestClientResponseException ex) {
-            invalidateToken();
+            invalidateIfAuthFailure(ex);
             log.warn("POST /api/v1/{} failed ({} {})", collection,
                     ex.getStatusCode().value(), ex.getStatusCode());
             throw new IllegalStateException("Could not create " + collection + " item (HTTP "
@@ -258,7 +298,7 @@ public class BackendDataService {
             }
             return objectMapper.readValue(response, new TypeReference<Map<String, Object>>() {});
         } catch (RestClientResponseException ex) {
-            invalidateToken();
+            invalidateIfAuthFailure(ex);
             log.warn("PUT /api/v1/{}/{} failed ({} {})", collection, id,
                     ex.getStatusCode().value(), ex.getStatusCode());
             throw new IllegalStateException("Could not update " + collection + " item (HTTP "
@@ -275,7 +315,7 @@ public class BackendDataService {
                     .retrieve()
                     .toBodilessEntity();
         } catch (RestClientResponseException ex) {
-            invalidateToken();
+            invalidateIfAuthFailure(ex);
             log.warn("DELETE /api/v1/{}/{} failed ({} {})", collection, id,
                     ex.getStatusCode().value(), ex.getStatusCode());
             throw new IllegalStateException("Could not delete " + collection + " item (HTTP "

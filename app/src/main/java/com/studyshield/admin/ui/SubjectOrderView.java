@@ -41,7 +41,7 @@ public class SubjectOrderView extends VerticalLayout {
 
         setPadding(true);
         setSpacing(true);
-        setSizeFull();
+        setWidthFull();
         add(new H2("Subject display order"));
 
         classGradeSelect.setLabel("Class grade");

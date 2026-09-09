@@ -61,7 +61,7 @@ public class SettingsView extends VerticalLayout {
 
         setPadding(true);
         setSpacing(true);
-        setSizeFull();
+        setWidthFull();
 
         add(new H2("Backend table browser"));
 
