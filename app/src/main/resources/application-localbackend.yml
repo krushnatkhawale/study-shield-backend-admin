@@ -4,6 +4,7 @@ server:
 studyshield:
   backend:
     base-url: ${STUDYSHIELD_BACKEND_URL:http://localhost:8080}
+    prod-base-url: ${STUDYSHIELD_BACKEND_PROD_URL:http://localhost:8082}
     username: ${STUDYSHIELD_BACKEND_USERNAME:}
     password: ${STUDYSHIELD_BACKEND_PASSWORD:}
     connect-timeout-ms: ${STUDYSHIELD_BACKEND_CONNECT_TIMEOUT_MS:5000}

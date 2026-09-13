@@ -43,7 +43,9 @@ public class BackendDataService {
 
     private final BackendApiProperties properties;
     private final ObjectMapper objectMapper;
-    private final RestClient restClient;
+    private final RestClient.Builder restClientBuilder;
+    private volatile RestClient restClient;
+    private volatile String environment;
 
     private final Object authLock = new Object();
     private volatile String bearerToken;
@@ -52,11 +54,17 @@ public class BackendDataService {
     public BackendDataService(BackendApiProperties properties, ObjectMapper objectMapper, RestClient.Builder builder) {
         this.properties = properties;
         this.objectMapper = objectMapper;
+        this.restClientBuilder = builder;
+        this.environment = BackendApiProperties.ENV_DEV;
+        this.restClient = buildRestClient(properties.baseUrlFor(environment));
+    }
+
+    private RestClient buildRestClient(String baseUrl) {
         SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
         requestFactory.setConnectTimeout(properties.getConnectTimeoutMs());
         requestFactory.setReadTimeout(properties.getReadTimeoutMs());
-        this.restClient = builder
-                .baseUrl(properties.getBaseUrl())
+        return restClientBuilder
+                .baseUrl(baseUrl)
                 .defaultHeader(HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON_VALUE)
                 .requestFactory(requestFactory)
                 .requestInterceptor((request, body, execution) -> {
@@ -67,6 +75,35 @@ public class BackendDataService {
                     return execution.execute(request, body);
                 })
                 .build();
+    }
+
+    /** The environments the admin console can operate against (e.g. dev, prod). */
+    public java.util.List<String> getEnvironments() {
+        return properties.environments();
+    }
+
+    /** The currently selected environment (dev or prod). */
+    public String getEnvironment() {
+        return environment;
+    }
+
+    /** Backend base URL for the currently selected environment. */
+    public String getActiveBaseUrl() {
+        return properties.baseUrlFor(environment);
+    }
+
+    /**
+     * Switches the environment for all subsequent admin console operations.
+     * Each environment maps to its own backend base URL; because the backend
+     * resolves its schema from its runtime profile (default=ss-dev, prod=ss-prod),
+     * switching here moves all CRUD onto the selected environment's schema.
+     * The cached bearer token is cleared so the new backend re-authenticates.
+     */
+    public void setEnvironment(String env) {
+        String baseUrl = properties.baseUrlFor(env);
+        this.environment = env;
+        this.restClient = buildRestClient(baseUrl);
+        invalidateToken();
     }
 
     private String getBearerToken() {
@@ -305,6 +342,28 @@ public class BackendDataService {
                     + ex.getStatusCode().value() + ")", ex);
         } catch (Exception ex) {
             throw new IllegalStateException("Could not update " + collection + " item", ex);
+        }
+    }
+
+    public Map<String, Object> postPath(String relativePath, Map<String, Object> payload) {
+        try {
+            String json = payload == null ? "{}" : objectMapper.writeValueAsString(payload);
+            String response = restClient.post()
+                    .uri("/api/v1/" + relativePath)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(json)
+                    .retrieve()
+                    .body(String.class);
+            if (response == null || response.isBlank()) {
+                return new LinkedHashMap<>();
+            }
+            return objectMapper.readValue(response, new TypeReference<Map<String, Object>>() {});
+        } catch (RestClientResponseException ex) {
+            invalidateIfAuthFailure(ex);
+            throw new IllegalStateException("POST /api/v1/" + relativePath + " failed (HTTP "
+                    + ex.getStatusCode().value() + ")", ex);
+        } catch (Exception ex) {
+            throw new IllegalStateException("POST /api/v1/" + relativePath + " failed", ex);
         }
     }
 

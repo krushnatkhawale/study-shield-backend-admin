@@ -2,7 +2,7 @@ package com.studyshield.admin.ui;
 
 import com.studyshield.admin.service.BackendDataService;
 import com.vaadin.flow.component.button.Button;
-import com.vaadin.flow.component.combobox.ComboBox;
+import com.vaadin.flow.component.checkbox.Checkbox;
 import com.vaadin.flow.component.formlayout.FormLayout;
 import com.vaadin.flow.component.grid.Grid;
 import com.vaadin.flow.component.notification.Notification;
@@ -17,62 +17,59 @@ import jakarta.annotation.security.RolesAllowed;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-@Route(value = "classes", layout = MainLayout.class)
-@PageTitle("Classes")
+@Route(value = "boards", layout = MainLayout.class)
+@PageTitle("Boards")
 @RolesAllowed("ADMIN")
-public class ClassGradeManagementView extends VerticalLayout {
+public class BoardManagementView extends VerticalLayout {
 
     private final BackendDataService api;
-    private final ComboBox<Map<String, Object>> boardSelect = new ComboBox<>("Board");
     private final Grid<Map<String, Object>> grid = new Grid<>();
-    private final TextField name = new TextField("Class name");
+    private final TextField name = new TextField("Name");
+    private final TextField code = new TextField("Code");
     private final TextArea description = new TextArea("Description");
+    private final Checkbox active = new Checkbox("Active");
     private Map<String, Object> selected;
 
-    public ClassGradeManagementView(BackendDataService api) {
+    public BoardManagementView(BackendDataService api) {
         this.api = api;
         setSizeFull();
         setPadding(false);
 
-        Button create = AdminUi.primary("New class");
+        Button create = AdminUi.primary("New board");
         create.addClickListener(e -> clear());
-        VerticalLayout page = AdminUi.page("Classes",
-                "Nursery through Class 10. Each class belongs to a board (usually ALL).", create);
-
-        boardSelect.setItemLabelGenerator(item -> AdminUi.label(item, "name", "code"));
-        boardSelect.setItems(api.list("boards"));
-        boardSelect.setWidth("280px");
+        VerticalLayout page = AdminUi.page("Boards", "CBSE, ICSE, state boards, or the shared ALL board.", create);
 
         grid.addColumn(r -> AdminUi.str(r, "id")).setHeader("ID").setAutoWidth(true);
-        grid.addColumn(r -> AdminUi.str(r, "name")).setHeader("Class").setFlexGrow(1);
-        grid.addColumn(r -> AdminUi.str(r, "boardName")).setHeader("Board");
+        grid.addColumn(r -> AdminUi.str(r, "name")).setHeader("Name").setFlexGrow(1);
+        grid.addColumn(r -> AdminUi.str(r, "code")).setHeader("Code");
+        grid.addColumn(r -> AdminUi.str(r, "active")).setHeader("Active");
         grid.setSizeFull();
         grid.asSingleSelect().addValueChangeListener(e -> edit(e.getValue()));
         refresh();
 
-        FormLayout form = new FormLayout(boardSelect, name, description);
+        FormLayout form = new FormLayout(name, code, description, active);
         Button save = AdminUi.primary("Save");
         save.addClickListener(e -> save());
         Button delete = AdminUi.danger("Delete");
         delete.addClickListener(e -> {
             if (AdminUi.id(selected) == null) {
-                Notification.show("Select a class");
+                Notification.show("Select a board");
                 return;
             }
-            AdminUi.confirmDelete("Delete class?", "Subjects and packs under this class may be left orphaned.", () -> {
-                api.delete("class-grades", AdminUi.id(selected));
+            AdminUi.confirmDelete("Delete board?", "Classes on this board may fail to load.", () -> {
+                api.delete("boards", AdminUi.id(selected));
                 clear();
                 refresh();
             });
         });
-        Button subjects = new Button("Open subjects", e -> getUI().ifPresent(ui -> ui.navigate(SubjectManagementView.class)));
 
-        page.add(AdminUi.card(grid), AdminUi.card(form, new HorizontalLayout(save, delete, subjects)));
+        page.add(AdminUi.card(grid), AdminUi.card(form, new HorizontalLayout(save, delete)));
         add(page);
+        setFlexGrow(1, page);
     }
 
     private void refresh() {
-        grid.setItems(api.list("class-grades"));
+        grid.setItems(api.list("boards"));
     }
 
     private void edit(Map<String, Object> row) {
@@ -81,37 +78,33 @@ public class ClassGradeManagementView extends VerticalLayout {
             return;
         }
         name.setValue(AdminUi.str(row, "name"));
+        code.setValue(AdminUi.str(row, "code"));
         description.setValue(AdminUi.str(row, "description"));
-        Object boardId = row.get("boardId");
-        boardSelect.getListDataView().getItems()
-                .filter(b -> String.valueOf(b.get("id")).equals(String.valueOf(boardId)))
-                .findFirst()
-                .ifPresent(boardSelect::setValue);
+        active.setValue(Boolean.parseBoolean(AdminUi.str(row, "active")));
     }
 
     private void clear() {
         selected = null;
         name.clear();
+        code.clear();
         description.clear();
+        active.setValue(true);
         grid.deselectAll();
     }
 
     private void save() {
-        if (boardSelect.getValue() == null) {
-            Notification.show("Choose a board");
-            return;
-        }
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("name", name.getValue());
+        payload.put("code", code.getValue());
         payload.put("description", description.getValue());
-        payload.put("boardId", AdminUi.id(boardSelect.getValue()));
+        payload.put("active", active.getValue());
         try {
             if (AdminUi.id(selected) != null) {
-                api.update("class-grades", AdminUi.id(selected), payload);
-                Notification.show("Class updated");
+                api.update("boards", AdminUi.id(selected), payload);
+                Notification.show("Board updated");
             } else {
-                api.create("class-grades", payload);
-                Notification.show("Class created");
+                api.create("boards", payload);
+                Notification.show("Board created");
             }
             clear();
             refresh();

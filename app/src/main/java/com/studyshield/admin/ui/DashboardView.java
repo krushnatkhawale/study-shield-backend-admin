@@ -3,115 +3,88 @@ package com.studyshield.admin.ui;
 import com.studyshield.admin.config.BackendApiProperties;
 import com.studyshield.admin.service.BackendDataService;
 import com.vaadin.flow.component.UI;
-import com.vaadin.flow.component.grid.Grid;
-import com.vaadin.flow.component.html.H2;
-import com.vaadin.flow.component.html.Span;
-import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
+import com.vaadin.flow.component.button.Button;
+import com.vaadin.flow.component.html.Paragraph;
+import com.vaadin.flow.component.notification.Notification;
+import com.vaadin.flow.component.orderedlayout.FlexLayout;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
 import com.vaadin.flow.router.PageTitle;
 import com.vaadin.flow.router.Route;
-import jakarta.annotation.security.PermitAll;
+import com.vaadin.flow.router.RouteAlias;
+import jakarta.annotation.security.RolesAllowed;
 
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
-@Route(value = "dashboard", layout = MainLayout.class)
-@PageTitle("Dashboard")
-@PermitAll
+@Route(value = "", layout = MainLayout.class)
+@RouteAlias(value = "dashboard", layout = MainLayout.class)
+@PageTitle("Home")
+@RolesAllowed("ADMIN")
 public class DashboardView extends VerticalLayout {
 
-    private static final List<String> TABLES = List.of(
-            "boards",
-            "class-grades",
-            "subjects",
-            "content-packs",
-            "quizzes",
-            "questions",
-            "quiz-bundles",
-            "users",
-            "admin-users",
-            "quiz-attempts",
-            "quiz-results",
-            "tv-users",
-            "wifi-networks",
-            "connected-tvs"
+    private static final Map<String, String> KPI = Map.of(
+            "boards", "Boards",
+            "class-grades", "Classes",
+            "subjects", "Subjects",
+            "content-packs", "Packs",
+            "quizzes", "Quizzes",
+            "questions", "Questions"
     );
 
     private final BackendDataService backendDataService;
-    private final HorizontalLayout summary = new HorizontalLayout();
-    private final Span loading = new Span("Loading backend counts…");
+    private final FlexLayout kpis = new FlexLayout();
 
     public DashboardView(BackendDataService backendDataService, BackendApiProperties backendApiProperties) {
         this.backendDataService = backendDataService;
-        setPadding(true);
-        setSpacing(true);
+        setSizeFull();
+        setPadding(false);
+        setSpacing(false);
 
-        add(new H2("StudyShield backend admin"));
+        Button rebuild = AdminUi.primary("Rebuild freemium catalog");
+        rebuild.addClickListener(e -> rebuildCatalog());
 
-        HorizontalLayout stats = new HorizontalLayout(
-                statusCard("Backend", "StudyShield modulith"),
-                statusCard("API", backendApiProperties.getBaseUrl()),
-                statusCard("Collections", String.valueOf(TABLES.size())),
-                statusCard("Mode", "CRUD admin")
-        );
-        stats.setWidthFull();
-        stats.setSpacing(true);
-        add(stats);
+        VerticalLayout page = AdminUi.page(
+                "Curriculum home",
+                "API: " + backendApiProperties.getBaseUrl() + " — counts refresh in the background.",
+                rebuild);
 
-        Grid<String> grid = new Grid<>();
-        grid.addColumn(item -> item).setHeader("Managed table");
-        grid.setItems(TABLES);
-        grid.setHeight("420px");
-        add(grid);
+        kpis.setFlexWrap(FlexLayout.FlexWrap.WRAP);
+        kpis.getStyle().set("gap", "1rem");
+        KPI.values().forEach(label -> kpis.add(AdminUi.kpi(label, "…")));
 
-        add(new H2("Backend data overview"));
+        Paragraph hint = new Paragraph(
+                "Work top-down: Board → Class → Subject → Pack → Quiz → Questions. "
+                        + "A quiz always plays the latest version of each question. "
+                        + "Rebuild catalog drops issued kid bundles so every subject with questions is offered.");
+        hint.addClassName("ss-muted");
 
-        summary.setWidthFull();
-        summary.getStyle().set("flex-wrap", "wrap");
-        loading.getStyle().set("color", "var(--lumo-secondary-text-color)");
-        summary.add(loading);
-        add(summary);
-
-        loadCountsAsync();
+        page.add(AdminUi.card(kpis), AdminUi.card(hint));
+        add(page);
+        loadCounts();
     }
 
-    /**
-     * Fetch row counts off the UI thread so the page renders immediately even when the backend is
-     * slow or unreachable; each call is bounded by the configured connect/read timeouts.
-     */
-    private void loadCountsAsync() {
+    private void rebuildCatalog() {
+        try {
+            Map<String, Object> result = backendDataService.postPath("quiz-bundles/rebuild-catalog", Map.of());
+            Notification.show("Rebuilt catalog — deleted " + result.getOrDefault("issuedBundlesDeleted", "?")
+                    + " issued bundles, seeded " + result.getOrDefault("classesSeeded", "?") + " classes");
+            loadCounts();
+        } catch (Exception ex) {
+            Notification.show("Rebuild failed: " + ex.getMessage());
+        }
+    }
+
+    private void loadCounts() {
         UI ui = UI.getCurrent();
         CompletableFuture.supplyAsync(() -> {
             Map<String, Integer> counts = new LinkedHashMap<>();
-            TABLES.parallelStream().forEach(table ->
-                    counts.put(table, backendDataService.list(table).size()));
+            KPI.keySet().forEach(key -> counts.put(key, backendDataService.list(key).size()));
             return counts;
-        }).thenAccept(counts -> {
-            try {
-                ui.access(() -> {
-                    summary.remove(loading);
-                    for (Map.Entry<String, Integer> entry : counts.entrySet()) {
-                        summary.add(statusCard(entry.getKey(), String.valueOf(entry.getValue())));
-                    }
-                });
-            } catch (Exception ex) {
-                // UI already closed; nothing to update.
-            }
-        });
-    }
-
-    private Span statusCard(String label, String value) {
-        Span card = new Span(label + "\n" + value);
-        card.getStyle()
-                .set("display", "inline-block")
-                .set("padding", "1rem 1.25rem")
-                .set("border-radius", "12px")
-                .set("background", "#f4f5f7")
-                .set("font-weight", "600")
-                .set("white-space", "pre-line")
-                .set("min-width", "180px");
-        return card;
+        }).thenAccept(counts -> ui.access(() -> {
+            kpis.removeAll();
+            KPI.forEach((key, label) ->
+                    kpis.add(AdminUi.kpi(label, String.valueOf(counts.getOrDefault(key, 0)))));
+        }));
     }
 }

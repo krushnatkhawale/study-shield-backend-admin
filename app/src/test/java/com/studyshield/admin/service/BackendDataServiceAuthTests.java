@@ -20,6 +20,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.springframework.web.client.RestClient;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class BackendDataServiceAuthTests {
 
@@ -104,5 +105,50 @@ class BackendDataServiceAuthTests {
 
         assertThat(signInCalls.get()).isEqualTo(2);
         assertThat(lastAuthorization.get("/api/v1/boards")).isEqualTo("Bearer tok-live-123");
+    }
+
+    @Test
+    void switchingEnvironmentTargetsTheSelectedBackendAndReSignsIn() throws IOException {
+        HttpServer prod = HttpServer.create(new InetSocketAddress(0), 0);
+        prod.setExecutor(Executors.newSingleThreadExecutor());
+        prod.createContext("/api/auth/admin-signin", exchange -> {
+            exchange.getRequestBody().readAllBytes();
+            respond(exchange, 200, "{\"sessionId\":\"tok-prod-456\",\"loginId\":\"good@example.com\"}");
+        });
+        prod.createContext("/api/v1/boards", exchange -> {
+            exchange.getRequestBody().readAllBytes();
+            lastAuthorization.put("/prod/v1/boards",
+                    exchange.getRequestHeaders().getFirst("Authorization"));
+            respond(exchange, 200, "[{\"id\":99,\"name\":\"Prod board\"}]");
+        });
+        prod.start();
+        try {
+            properties.setUsername("good@example.com");
+            properties.setPassword("secret");
+            properties.setProdBaseUrl("http://localhost:" + prod.getAddress().getPort());
+            BackendDataService service = service(properties);
+
+            List<Map<String, Object>> devBoards = service.list("boards");
+            assertThat(devBoards).singleElement()
+                    .extracting(m -> m.get("name")).isEqualTo("Std 1");
+
+            service.setEnvironment("prod");
+
+            List<Map<String, Object>> prodBoards = service.list("boards");
+            assertThat(prodBoards).singleElement()
+                    .extracting(m -> m.get("name")).isEqualTo("Prod board");
+            assertThat(lastAuthorization.get("/prod/v1/boards")).isEqualTo("Bearer tok-prod-456");
+            assertThat(service.getEnvironment()).isEqualTo("prod");
+        } finally {
+            prod.stop(0);
+        }
+    }
+
+    @Test
+    void unknownEnvironmentIsRejected() {
+        BackendDataService service = service(properties);
+        assertThatThrownBy(() -> service.setEnvironment("staging"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Unknown environment");
     }
 }

@@ -1,35 +1,30 @@
-# StudyShield Backend Admin
+# StudyShield Admin
 
-A Java-based admin console for StudyShield's backend configuration. It is built with Spring Boot 3 and Vaadin so operators can manage application settings through a secure UI without writing configuration files by hand.
+Vaadin 24 console for the StudyShield backend: boards, classes, subjects, packs, quizzes and the question bank.
 
-## Why Vaadin?
+Login uses the **backend admin account** (`/api/auth/admin-signin`). There is no local `admin/admin123` user.
 
-Vaadin is a strong fit for an internal admin panel because it keeps the UI in Java, gives a rich component library, and matches the admin workflow of editing structured configuration values. This repo is designed to expose the config model used by the StudyShield backend in a secure, maintainable way.
-
-## Features
-
-- secure admin login (`admin` / `admin123` by default)
-- dashboard overview of backend settings
-- editable configuration form for app, security, and catalog settings
-- persistent config storage in H2 for local development
-- basic Spring Boot tests covering context startup, security, and config storage
-
-## Run locally
+## Run
 
 ```bash
-cd /Users/hulk/.buzz/REPOS/study-shield-backend-admin
 ./gradlew :app:bootRun
 ```
 
-Then open:
+http://localhost:8081/login
 
-- http://localhost:8081/login
-- default credentials: `admin` / `admin123`
+```
+STUDYSHIELD_BACKEND_URL=https://study-shield-backend-komv.onrender.com
+```
 
-## Default admin account
+## Operator flow
 
-The application uses an in-memory Spring Security user for local development. You can change it in `SecurityConfiguration.java` when wiring to a real identity provider.
+1. **Boards** → **Classes** → **Subjects** (order with ↑↓).
+2. **Packs** — create Freemium / Seasonal / Promotional / Complementary / Library; disable to hide.
+3. **Quizzes** — belong to a pack. Add questions from the bank or write new ones. Remove sends the question back to the subject library (not deleted).
+4. **Question bank** — edit creates a **new version**; the quiz always plays the latest.
+5. **Home** — rebuild freemium catalog after pack changes so existing kids are not stuck on an old bundle snapshot.
 
-## Notes
+Light/dark theme toggle is in the header. Theme files live in
+`src/main/frontend/themes/studyshield/` (Vaadin looks there from the repo root).
 
-The config is intentionally backed by a local H2 database so the admin can update values in the browser without modifying YAML files directly. The values are based on the StudyShield backend architecture described in the project docs, including JWT expiration and catalog seeding toggles.
+See `study-shield-docs/docs/per-repo/admin.md` for the full map.

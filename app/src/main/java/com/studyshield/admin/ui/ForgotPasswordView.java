@@ -47,7 +47,6 @@ public class ForgotPasswordView extends VerticalLayout {
         EmailField emailField = new EmailField("Email");
         emailField.setWidth("300px");
         emailField.setPlaceholder("admin@studyshield.local");
-        emailField.setValue("admin@studyshield.local");
 
         PasswordField passwordField = new PasswordField("New Password");
         passwordField.setWidth("300px");
