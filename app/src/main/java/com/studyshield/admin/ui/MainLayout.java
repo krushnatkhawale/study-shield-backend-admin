@@ -76,8 +76,9 @@ public class MainLayout extends AppLayout {
         catalog.setLabel("Catalog");
         catalog.addItem(
                 new SideNavItem("Boards", BoardManagementView.class, VaadinIcon.INSTITUTION.create()),
-                new SideNavItem("Classes", ClassGradeManagementView.class, VaadinIcon.ACADEMY_CAP.create()),
-                new SideNavItem("Subjects", SubjectManagementView.class, VaadinIcon.BOOK.create())
+                new SideNavItem("Board classes", BoardClassManagementView.class, VaadinIcon.ACADEMY_CAP.create()),
+                new SideNavItem("Subjects", SubjectManagementView.class, VaadinIcon.BOOK.create()),
+                new SideNavItem("Offerings", OfferingManagementView.class, VaadinIcon.LINK.create())
         );
 
         SideNav content = new SideNav();

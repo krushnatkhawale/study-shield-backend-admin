@@ -31,7 +31,9 @@ public class PackManagementView extends VerticalLayout {
             "FREEMIUM", "PREMIUM", "LIBRARY", "PROMOTIONAL", "SEASONAL", "COMPLEMENTARY");
 
     private final BackendDataService api;
-    private final ComboBox<Map<String, Object>> subjectSelect = new ComboBox<>("Subject");
+    private final ComboBox<Map<String, Object>> boardSelect = new ComboBox<>("Board");
+    private final ComboBox<Map<String, Object>> boardClassSelect = new ComboBox<>("Board class");
+    private final ComboBox<Map<String, Object>> offeringSelect = new ComboBox<>("Offering");
     private final Grid<Map<String, Object>> grid = new Grid<>();
     private final TextField name = new TextField("Pack name");
     private final TextArea description = new TextArea("Description");
@@ -50,13 +52,21 @@ public class PackManagementView extends VerticalLayout {
         Button create = AdminUi.primary("New pack");
         create.addClickListener(e -> clear());
         VerticalLayout page = AdminUi.page("Content packs",
-                "Freemium packs are what the kid app downloads. Disable a pack to hide it without deleting questions.",
+                "Freemium packs are what the kid app downloads. Each pack belongs to an offering (board class + subject).",
                 create);
 
-        subjectSelect.setItemLabelGenerator(item -> AdminUi.label(item, "name"));
-        subjectSelect.setItems(api.list("subjects"));
-        subjectSelect.setWidth("320px");
-        subjectSelect.addValueChangeListener(e -> refresh());
+        boardSelect.setItemLabelGenerator(item -> AdminUi.label(item, "name", "code"));
+        boardSelect.setItems(api.list("boards"));
+        boardSelect.setWidth("220px");
+        boardSelect.addValueChangeListener(e -> loadBoardClasses());
+
+        boardClassSelect.setItemLabelGenerator(item -> AdminUi.label(item, "displayName") + " (ord " + AdminUi.str(item, "ordinal") + ")");
+        boardClassSelect.setWidth("300px");
+        boardClassSelect.addValueChangeListener(e -> loadOfferings());
+
+        offeringSelect.setItemLabelGenerator(item -> AdminUi.str(item, "subjectCode") + " - " + AdminUi.str(item, "className"));
+        offeringSelect.setWidth("320px");
+        offeringSelect.addValueChangeListener(e -> refresh());
 
         packType.setItems(TYPES);
         packType.setValue("FREEMIUM");
@@ -72,7 +82,7 @@ public class PackManagementView extends VerticalLayout {
         grid.setSizeFull();
         grid.asSingleSelect().addValueChangeListener(e -> edit(e.getValue()));
 
-        FormLayout form = new FormLayout(subjectSelect, name, packType, version, validFrom, validTo, description, active);
+        FormLayout form = new FormLayout(offeringSelect, name, packType, version, validFrom, validTo, description, active);
         Button save = AdminUi.primary("Save pack");
         save.addClickListener(e -> save());
         Button disable = new Button("Disable", e -> setActive(false));
@@ -90,16 +100,32 @@ public class PackManagementView extends VerticalLayout {
             });
         });
 
-        page.add(AdminUi.card(grid), AdminUi.card(form, new HorizontalLayout(save, enable, disable, delete)));
+        HorizontalLayout selectors = new HorizontalLayout(boardSelect, boardClassSelect, offeringSelect);
+        selectors.setAlignItems(Alignment.END);
+        page.add(selectors, AdminUi.card(grid), AdminUi.card(form, new HorizontalLayout(save, enable, disable, delete)));
         add(page);
     }
 
+    private void loadBoardClasses() {
+        Long boardId = AdminUi.id(boardSelect.getValue());
+        boardClassSelect.setItems(boardId == null ? List.of() : api.listBy("board-classes", "board", boardId));
+        offeringSelect.setItems(List.of());
+        grid.setItems(List.of());
+    }
+
+    private void loadOfferings() {
+        Long boardClassId = AdminUi.id(boardClassSelect.getValue());
+        offeringSelect.setItems(boardClassId == null ? List.of() : api.listBy("offerings", "board-class", boardClassId));
+        grid.setItems(List.of());
+    }
+
     private void refresh() {
-        if (AdminUi.id(subjectSelect.getValue()) == null) {
+        Long offeringId = AdminUi.id(offeringSelect.getValue());
+        if (offeringId == null) {
             grid.setItems(List.of());
             return;
         }
-        grid.setItems(api.listBy("content-packs", "subject", AdminUi.id(subjectSelect.getValue())));
+        grid.setItems(api.listBy("content-packs", "offering", offeringId));
     }
 
     private void edit(Map<String, Object> row) {
@@ -143,14 +169,15 @@ public class PackManagementView extends VerticalLayout {
     }
 
     private void save() {
-        if (AdminUi.id(subjectSelect.getValue()) == null) {
-            Notification.show("Choose a subject");
+        Long offeringId = AdminUi.id(offeringSelect.getValue());
+        if (offeringId == null) {
+            Notification.show("Choose an offering first");
             return;
         }
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("name", name.getValue());
         payload.put("description", description.getValue());
-        payload.put("subjectId", AdminUi.id(subjectSelect.getValue()));
+        payload.put("offeringId", offeringId);
         payload.put("version", version.getValue() == null ? 1 : version.getValue());
         payload.put("active", active.getValue());
         payload.put("packType", packType.getValue());

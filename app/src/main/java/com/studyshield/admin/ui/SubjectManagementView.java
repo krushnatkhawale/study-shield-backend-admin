@@ -3,7 +3,6 @@ package com.studyshield.admin.ui;
 import com.studyshield.admin.service.BackendDataService;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.checkbox.Checkbox;
-import com.vaadin.flow.component.combobox.ComboBox;
 import com.vaadin.flow.component.formlayout.FormLayout;
 import com.vaadin.flow.component.grid.Grid;
 import com.vaadin.flow.component.notification.Notification;
@@ -29,7 +28,6 @@ import java.util.Map;
 public class SubjectManagementView extends VerticalLayout {
 
     private final BackendDataService api;
-    private final ComboBox<Map<String, Object>> classSelect = new ComboBox<>("Class");
     private final Grid<Map<String, Object>> grid = new Grid<>();
     private final TextField name = new TextField("Name");
     private final TextField code = new TextField("Code");
@@ -47,12 +45,7 @@ public class SubjectManagementView extends VerticalLayout {
         Button create = AdminUi.primary("New subject");
         create.addClickListener(e -> clear());
         VerticalLayout page = AdminUi.page("Subjects",
-                "Subjects belong to a class. Display order is how they appear in the kid app.", create);
-
-        classSelect.setItemLabelGenerator(item -> AdminUi.label(item, "name"));
-        classSelect.setItems(api.list("class-grades"));
-        classSelect.setWidth("280px");
-        classSelect.addValueChangeListener(e -> refresh());
+                "Global subjects across all boards. Display order is how they appear in the kid app.", create);
 
         grid.addColumn(r -> AdminUi.str(r, "displayOrder")).setHeader("#").setWidth("70px");
         grid.addColumn(r -> AdminUi.str(r, "name")).setHeader("Subject").setFlexGrow(1);
@@ -62,7 +55,7 @@ public class SubjectManagementView extends VerticalLayout {
         grid.setSizeFull();
         grid.asSingleSelect().addValueChangeListener(e -> edit(e.getValue()));
 
-        FormLayout form = new FormLayout(classSelect, name, code, displayOrder, description, active);
+        FormLayout form = new FormLayout(name, code, displayOrder, description, active);
         Button save = AdminUi.primary("Save");
         save.addClickListener(e -> save());
         Button delete = AdminUi.danger("Delete");
@@ -71,7 +64,7 @@ public class SubjectManagementView extends VerticalLayout {
                 Notification.show("Select a subject");
                 return;
             }
-            AdminUi.confirmDelete("Delete subject?", "Packs and quizzes under this subject may break.", () -> {
+            AdminUi.confirmDelete("Delete subject?", "Offerings and packs under this subject may break.", () -> {
                 api.delete("subjects", AdminUi.id(selected));
                 clear();
                 refresh();
@@ -80,11 +73,12 @@ public class SubjectManagementView extends VerticalLayout {
 
         page.add(AdminUi.card(grid), AdminUi.card(form, new HorizontalLayout(save, delete)));
         add(page);
+        refresh();
     }
 
     private HorizontalLayout moveButtons(Map<String, Object> item) {
-        Button up = new Button("↑", e -> move(item, -1));
-        Button down = new Button("↓", e -> move(item, 1));
+        Button up = new Button("\u2191", e -> move(item, -1));
+        Button down = new Button("\u2193", e -> move(item, 1));
         return new HorizontalLayout(up, down);
     }
 
@@ -105,14 +99,11 @@ public class SubjectManagementView extends VerticalLayout {
 
     private void persistOrder(Map<String, Object> item) {
         try {
-            Map<String, Object> payload = new LinkedHashMap<>(item);
-            payload.remove("id");
             api.update("subjects", AdminUi.id(item), Map.of(
                     "name", item.get("name"),
                     "code", item.get("code"),
-                    "description", item.get("description"),
-                    "classGradeId", item.get("classGradeId"),
-                    "active", item.get("active"),
+                    "description", item.get("description") != null ? item.get("description") : "",
+                    "active", item.get("active") != null ? item.get("active") : true,
                     "displayOrder", item.get("displayOrder")));
         } catch (Exception ex) {
             Notification.show("Could not save order: " + ex.getMessage());
@@ -121,11 +112,7 @@ public class SubjectManagementView extends VerticalLayout {
 
     private void refresh() {
         rows.clear();
-        if (AdminUi.id(classSelect.getValue()) == null) {
-            grid.setItems(List.of());
-            return;
-        }
-        rows.addAll(api.listBy("subjects", "class-grade", AdminUi.id(classSelect.getValue())));
+        rows.addAll(api.list("subjects"));
         grid.setItems(rows);
     }
 
@@ -156,15 +143,10 @@ public class SubjectManagementView extends VerticalLayout {
     }
 
     private void save() {
-        if (AdminUi.id(classSelect.getValue()) == null) {
-            Notification.show("Choose a class");
-            return;
-        }
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("name", name.getValue());
         payload.put("code", code.getValue().isBlank() ? name.getValue().toUpperCase().replace(' ', '_') : code.getValue());
         payload.put("description", description.getValue());
-        payload.put("classGradeId", AdminUi.id(classSelect.getValue()));
         payload.put("active", active.getValue());
         payload.put("displayOrder", displayOrder.getValue() == null ? 1 : displayOrder.getValue());
         try {

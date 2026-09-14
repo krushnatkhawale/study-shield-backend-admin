@@ -30,8 +30,10 @@ public class SettingsView extends VerticalLayout {
 
     private static final List<String> COLLECTIONS = List.of(
             "boards",
-            "class-grades",
+            "class-levels",
+            "board-classes",
             "subjects",
+            "offerings",
             "content-packs",
             "quizzes",
             "questions",

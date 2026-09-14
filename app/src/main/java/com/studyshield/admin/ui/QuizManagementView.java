@@ -36,7 +36,9 @@ public class QuizManagementView extends VerticalLayout {
             "FREEMIUM", "PREMIUM", "LIBRARY", "PROMOTIONAL", "SEASONAL", "COMPLEMENTARY");
 
     private final BackendDataService api;
-    private final ComboBox<Map<String, Object>> subjectSelect = new ComboBox<>("Subject");
+    private final ComboBox<Map<String, Object>> boardSelect = new ComboBox<>("Board");
+    private final ComboBox<Map<String, Object>> boardClassSelect = new ComboBox<>("Board class");
+    private final ComboBox<Map<String, Object>> offeringSelect = new ComboBox<>("Offering");
     private final ComboBox<Map<String, Object>> packSelect = new ComboBox<>("Pack");
     private final Grid<Map<String, Object>> quizGrid = new Grid<>();
     private final Grid<Map<String, Object>> questionGrid = new Grid<>();
@@ -63,12 +65,20 @@ public class QuizManagementView extends VerticalLayout {
                 "A quiz always plays the latest version of each question. Add or remove questions without deleting the bank copy.",
                 create);
 
-        subjectSelect.setItemLabelGenerator(item -> AdminUi.label(item, "name"));
-        subjectSelect.setItems(api.list("subjects"));
-        subjectSelect.setWidth("260px");
-        subjectSelect.addValueChangeListener(e -> loadPacks());
+        boardSelect.setItemLabelGenerator(item -> AdminUi.label(item, "name", "code"));
+        boardSelect.setItems(api.list("boards"));
+        boardSelect.setWidth("220px");
+        boardSelect.addValueChangeListener(e -> loadBoardClasses());
 
-        packSelect.setItemLabelGenerator(item -> AdminUi.str(item, "name") + " · " + AdminUi.str(item, "packType"));
+        boardClassSelect.setItemLabelGenerator(item -> AdminUi.label(item, "displayName") + " (ord " + AdminUi.str(item, "ordinal") + ")");
+        boardClassSelect.setWidth("300px");
+        boardClassSelect.addValueChangeListener(e -> loadOfferings());
+
+        offeringSelect.setItemLabelGenerator(item -> AdminUi.str(item, "subjectCode") + " - " + AdminUi.str(item, "className"));
+        offeringSelect.setWidth("300px");
+        offeringSelect.addValueChangeListener(e -> loadPacks());
+
+        packSelect.setItemLabelGenerator(item -> AdminUi.str(item, "name") + " \u00b7 " + AdminUi.str(item, "packType"));
         packSelect.setWidth("320px");
         packSelect.addValueChangeListener(e -> loadQuizzes());
 
@@ -117,8 +127,10 @@ public class QuizManagementView extends VerticalLayout {
         HorizontalLayout qHeader = new HorizontalLayout(new H4("Questions in this quiz"), addExisting, addNew);
         qHeader.setAlignItems(Alignment.CENTER);
 
+        HorizontalLayout selectors = new HorizontalLayout(boardSelect, boardClassSelect, offeringSelect, packSelect);
+        selectors.setAlignItems(Alignment.END);
         page.add(
-                new HorizontalLayout(subjectSelect, packSelect),
+                selectors,
                 AdminUi.card(quizGrid),
                 AdminUi.card(form, new HorizontalLayout(save, delete)),
                 AdminUi.card(qHeader, questionGrid));
@@ -132,9 +144,26 @@ public class QuizManagementView extends VerticalLayout {
         return new HorizontalLayout(edit, remove);
     }
 
+    private void loadBoardClasses() {
+        Long boardId = AdminUi.id(boardSelect.getValue());
+        boardClassSelect.setItems(boardId == null ? List.of() : api.listBy("board-classes", "board", boardId));
+        offeringSelect.setItems(List.of());
+        packSelect.setItems(List.of());
+        quizGrid.setItems(List.of());
+        questionGrid.setItems(List.of());
+    }
+
+    private void loadOfferings() {
+        Long boardClassId = AdminUi.id(boardClassSelect.getValue());
+        offeringSelect.setItems(boardClassId == null ? List.of() : api.listBy("offerings", "board-class", boardClassId));
+        packSelect.setItems(List.of());
+        quizGrid.setItems(List.of());
+        questionGrid.setItems(List.of());
+    }
+
     private void loadPacks() {
-        Long subjectId = AdminUi.id(subjectSelect.getValue());
-        packSelect.setItems(subjectId == null ? List.of() : api.listBy("content-packs", "subject", subjectId));
+        Long offeringId = AdminUi.id(offeringSelect.getValue());
+        packSelect.setItems(offeringId == null ? List.of() : api.listBy("content-packs", "offering", offeringId));
         quizGrid.setItems(List.of());
         questionGrid.setItems(List.of());
     }
@@ -222,16 +251,16 @@ public class QuizManagementView extends VerticalLayout {
     }
 
     private void removeFromQuiz(Map<String, Object> question) {
-        Long subjectId = AdminUi.id(subjectSelect.getValue());
-        if (subjectId == null || AdminUi.id(question) == null) {
+        Long offeringId = AdminUi.id(offeringSelect.getValue());
+        if (offeringId == null || AdminUi.id(question) == null) {
             return;
         }
         try {
-            Map<String, Object> library = api.postPath("quizzes/library/" + subjectId, Map.of());
+            Map<String, Object> library = api.postPath("quizzes/library/" + offeringId, Map.of());
             Long libraryQuizId = AdminUi.id(library);
             api.postPath("questions/" + AdminUi.id(question) + "/assign-quiz",
                     Map.of("quizId", libraryQuizId));
-            Notification.show("Moved to the subject question bank — not deleted");
+            Notification.show("Moved to the offering library quiz \u2014 not deleted");
             loadQuestions();
         } catch (Exception ex) {
             Notification.show(ex.getMessage());
@@ -239,10 +268,15 @@ public class QuizManagementView extends VerticalLayout {
     }
 
     private void openBankPicker() {
-        Long subjectId = AdminUi.id(subjectSelect.getValue());
+        Long offeringId = AdminUi.id(offeringSelect.getValue());
         Long quizId = AdminUi.id(selectedQuiz);
-        if (subjectId == null || quizId == null) {
-            Notification.show("Select a subject and a quiz");
+        if (offeringId == null || quizId == null) {
+            Notification.show("Select an offering and a quiz");
+            return;
+        }
+        Long subjectId = getOfferingSubjectId();
+        if (subjectId == null) {
+            Notification.show("Could not determine subject for the selected offering");
             return;
         }
         Set<String> already = questionGrid.getListDataView().getItems()
@@ -268,10 +302,20 @@ public class QuizManagementView extends VerticalLayout {
             }
             dialog.close();
             loadQuestions();
-            Notification.show("Questions added — latest versions will play");
+            Notification.show("Questions added \u2014 latest versions will play");
         });
         dialog.add(bankGrid, new HorizontalLayout(add, new Button("Cancel", ev -> dialog.close())));
         dialog.open();
+    }
+
+    /** Read the subjectId from the currently selected offering row. */
+    @SuppressWarnings("unchecked")
+    private Long getOfferingSubjectId() {
+        Map<String, Object> offering = offeringSelect.getValue();
+        if (offering == null) return null;
+        Object val = offering.get("subjectId");
+        if (val instanceof Number n) return n.longValue();
+        try { return Long.parseLong(String.valueOf(val)); } catch (Exception e) { return null; }
     }
 
     private static int parseInt(Object value, int fallback) {
