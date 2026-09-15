@@ -1,11 +1,14 @@
 package com.studyshield.admin.ui;
 
 import com.studyshield.admin.service.BackendDataService;
+import com.vaadin.flow.component.Key;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.combobox.ComboBox;
+import com.vaadin.flow.component.dialog.Dialog;
 import com.vaadin.flow.component.formlayout.FormLayout;
 import com.vaadin.flow.component.grid.Grid;
 import com.vaadin.flow.component.notification.Notification;
+import com.vaadin.flow.component.orderedlayout.FlexComponent;
 import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
 import com.vaadin.flow.component.textfield.IntegerField;
@@ -23,10 +26,8 @@ import java.util.Map;
 public class BoardClassManagementView extends VerticalLayout {
 
     private final BackendDataService api;
-    private final ComboBox<Map<String, Object>> boardSelect = new ComboBox<>("Board");
+    private final ComboBox<Map<String, Object>> boardFilter = new ComboBox<>("Board");
     private final Grid<Map<String, Object>> grid = new Grid<>();
-    private final IntegerField ordinal = new IntegerField("Ordinal");
-    private final TextField displayName = new TextField("Display name");
 
     public BoardClassManagementView(BackendDataService api) {
         this.api = api;
@@ -34,32 +35,31 @@ public class BoardClassManagementView extends VerticalLayout {
         setPadding(false);
 
         Button create = AdminUi.primary("New board class");
-        create.addClickListener(e -> clear());
+        create.addClickListener(e -> openDialog(null));
         VerticalLayout page = AdminUi.page("Board classes",
-                "Mapping from a board to a global ordinal with a board-specific display name (e.g. CBSE → 'Class 3' at ordinal 7).",
+                "Mapping from a board to a global ordinal with a board-specific display name (e.g. CBSE → 'Class 3' at ordinal 7). Double-click a row to edit.",
                 create);
 
-        boardSelect.setItemLabelGenerator(item -> AdminUi.label(item, "name", "code"));
-        boardSelect.setItems(api.list("boards"));
-        boardSelect.setWidth("280px");
-        boardSelect.addValueChangeListener(e -> refresh());
+        boardFilter.setItemLabelGenerator(item -> AdminUi.label(item, "name", "code"));
+        boardFilter.setItems(api.list("boards"));
+        boardFilter.setWidth("280px");
+        boardFilter.setPlaceholder("Filter by board");
+        boardFilter.addValueChangeListener(e -> refresh());
 
+        grid.addColumn(r -> AdminUi.str(r, "id")).setHeader("ID").setAutoWidth(true);
         grid.addColumn(r -> AdminUi.str(r, "displayName")).setHeader("Display name").setFlexGrow(1);
         grid.addColumn(r -> AdminUi.str(r, "ordinal")).setHeader("Ordinal").setWidth("90px");
         grid.addColumn(r -> AdminUi.str(r, "boardCode")).setHeader("Board").setAutoWidth(true);
         grid.setSizeFull();
+        grid.addItemDoubleClickListener(e -> openDialog(e.getItem()));
 
-        FormLayout form = new FormLayout(boardSelect, ordinal, displayName);
-        Button save = AdminUi.primary("Create board class");
-        save.addClickListener(e -> save());
-
-        page.add(AdminUi.card(grid), AdminUi.card(form, save));
+        page.add(boardFilter, AdminUi.card(grid));
         add(page);
         refresh();
     }
 
     private void refresh() {
-        Long boardId = AdminUi.id(boardSelect.getValue());
+        Long boardId = AdminUi.id(boardFilter.getValue());
         if (boardId == null) {
             grid.setItems(List.of());
             return;
@@ -67,35 +67,83 @@ public class BoardClassManagementView extends VerticalLayout {
         grid.setItems(api.listBy("board-classes", "board", boardId));
     }
 
-    private void save() {
-        if (boardSelect.getValue() == null) {
-            Notification.show("Choose a board");
-            return;
-        }
-        if (ordinal.getValue() == null) {
-            Notification.show("Ordinal is required");
-            return;
-        }
-        if (displayName.getValue().isBlank()) {
-            Notification.show("Display name is required");
-            return;
-        }
-        try {
-            Map<String, Object> payload = Map.of(
-                    "boardId", AdminUi.id(boardSelect.getValue()),
-                    "ordinal", ordinal.getValue(),
-                    "displayName", displayName.getValue().trim());
-            api.create("board-classes", payload);
-            Notification.show("Board class created");
-            clear();
-            refresh();
-        } catch (Exception ex) {
-            Notification.show(ex.getMessage());
-        }
-    }
+    private void openDialog(Map<String, Object> row) {
+        Long id = AdminUi.id(row);
+        boolean isNew = id == null;
 
-    private void clear() {
-        ordinal.clear();
-        displayName.clear();
+        ComboBox<Map<String, Object>> boardSelect = new ComboBox<>("Board");
+        boardSelect.setItems(api.list("boards"));
+        boardSelect.setItemLabelGenerator(item -> AdminUi.label(item, "name", "code"));
+        boardSelect.setWidthFull();
+        IntegerField ordinal = new IntegerField("Ordinal");
+        ordinal.setWidthFull();
+        TextField displayName = new TextField("Display name");
+        displayName.setWidthFull();
+        if (row != null) {
+            // Preselect the board matching the row's boardCode, if present.
+            String boardCode = AdminUi.str(row, "boardCode");
+            boardSelect.getListDataView().getItems()
+                    .filter(b -> boardCode.equalsIgnoreCase(AdminUi.str(b, "code")))
+                    .findFirst().ifPresent(boardSelect::setValue);
+            try {
+                ordinal.setValue(Integer.parseInt(AdminUi.str(row, "ordinal")));
+            } catch (NumberFormatException ignored) {
+            }
+            displayName.setValue(AdminUi.str(row, "displayName"));
+        } else if (boardFilter.getValue() != null) {
+            boardSelect.setValue(boardFilter.getValue());
+        }
+
+        FormLayout form = AdminUi.entityForm(boardSelect, ordinal, displayName);
+        form.setColspan(displayName, 2);
+
+        Dialog dialog = AdminUi.entityDialog(isNew ? "New board class" : "Edit board class", form);
+
+        Button save = AdminUi.primary("Save");
+        save.addClickListener(e -> {
+            if (boardSelect.getValue() == null) {
+                Notification.show("Choose a board");
+                boardSelect.focus();
+                return;
+            }
+            if (ordinal.getValue() == null) {
+                Notification.show("Ordinal is required");
+                ordinal.focus();
+                return;
+            }
+            if (displayName.getValue().isBlank()) {
+                Notification.show("Display name is required");
+                displayName.focus();
+                return;
+            }
+            try {
+                Map<String, Object> payload = Map.of(
+                        "boardId", AdminUi.id(boardSelect.getValue()),
+                        "ordinal", ordinal.getValue(),
+                        "displayName", displayName.getValue().trim());
+                if (!isNew) {
+                    api.update("board-classes", id, payload);
+                    Notification.show("Board class updated");
+                } else {
+                    api.create("board-classes", payload);
+                    Notification.show("Board class created");
+                }
+                dialog.close();
+                refresh();
+            } catch (Exception ex) {
+                Notification.show(ex.getMessage());
+            }
+        });
+        Button delete = AdminUi.danger("Delete");
+        delete.setVisible(!isNew);
+        delete.addClickListener(e -> AdminUi.confirmDelete("Delete board class?", "Offerings under this class may break.", () -> {
+            api.delete("board-classes", id);
+            dialog.close();
+            refresh();
+        }));
+        AdminUi.dialogFooter(dialog, delete, save);
+
+        dialog.open();
+        boardSelect.focus();
     }
 }

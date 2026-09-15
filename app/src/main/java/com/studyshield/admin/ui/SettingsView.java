@@ -1,19 +1,17 @@
 package com.studyshield.admin.ui;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.studyshield.admin.service.BackendDataService;
 import com.vaadin.flow.component.button.Button;
+import com.vaadin.flow.component.dialog.Dialog;
+import com.vaadin.flow.component.formlayout.FormLayout;
 import com.vaadin.flow.component.grid.Grid;
-import com.vaadin.flow.component.html.H2;
 import com.vaadin.flow.component.notification.Notification;
 import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
 import com.vaadin.flow.component.select.Select;
 import com.vaadin.flow.component.textfield.TextArea;
-import com.vaadin.flow.data.renderer.TextRenderer;
 import com.vaadin.flow.router.PageTitle;
 import com.vaadin.flow.router.Route;
 import jakarta.annotation.security.RolesAllowed;
@@ -54,66 +52,100 @@ public class SettingsView extends VerticalLayout {
     private final ObjectMapper objectMapper;
     private final Select<String> collectionSelect = new Select<>();
     private final Grid<Map<String, Object>> grid = new Grid<>();
-    private final TextArea recordEditor = new TextArea("Record JSON");
-    private Map<String, Object> selectedRecord;
 
     public SettingsView(BackendDataService backendDataService, ObjectMapper objectMapper) {
         this.backendDataService = backendDataService;
         this.objectMapper = objectMapper;
+        setSizeFull();
+        setPadding(false);
 
-        setPadding(true);
-        setSpacing(true);
-        setWidthFull();
-
-        add(new H2("Backend table browser"));
+        Button create = AdminUi.primary("New record");
+        create.addClickListener(e -> openDialog(null));
+        VerticalLayout page = AdminUi.page("Backend table browser",
+                "Low-level JSON view of every backend table. Double-click a row to edit.",
+                create);
 
         collectionSelect.setItems(COLLECTIONS);
         collectionSelect.setValue("boards");
         collectionSelect.setLabel("Table");
+        collectionSelect.setWidth("240px");
         collectionSelect.addValueChangeListener(event -> loadCollection(event.getValue()));
 
         Button refreshButton = new Button("Refresh", event -> loadCollection(collectionSelect.getValue()));
-        Button newButton = new Button("New record", event -> { selectedRecord = new LinkedHashMap<>(); recordEditor.setValue("{}\n"); });
-        Button saveButton = new Button("Save", event -> saveRecord());
-        Button deleteButton = new Button("Delete", event -> deleteRecord());
 
-        HorizontalLayout controls = new HorizontalLayout(collectionSelect, refreshButton, newButton, saveButton, deleteButton);
+        grid.addColumn(item -> AdminUi.str(item, "id")).setHeader("ID").setAutoWidth(true);
+        grid.addColumn(item -> summarize(item)).setHeader("Summary").setFlexGrow(1);
+        grid.setSizeFull();
+        grid.addItemDoubleClickListener(event -> openDialog(event.getItem()));
+
+        HorizontalLayout controls = new HorizontalLayout(collectionSelect, refreshButton);
         controls.setAlignItems(Alignment.END);
-        add(controls);
+        page.add(controls, AdminUi.card(grid));
+        page.setFlexGrow(1, page.getComponentAt(1));
+        add(page);
+        setFlexGrow(1, page);
+        loadCollection("boards");
+    }
 
-        grid.addColumn(item -> item.getOrDefault("id", "-"))
-                .setHeader("ID");
-        grid.addColumn(item -> summarize(item))
-                .setHeader("Summary");
-        grid.setSelectionMode(Grid.SelectionMode.SINGLE);
-        grid.asSingleSelect().addValueChangeListener(event -> {
-            selectedRecord = event.getValue();
-            if (selectedRecord != null) {
-                try {
-                    recordEditor.setValue(objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(selectedRecord));
-                } catch (JsonProcessingException e) {
-                    recordEditor.setValue(selectedRecord.toString());
+    private void openDialog(Map<String, Object> row) {
+        Long id = AdminUi.id(row);
+        boolean isNew = id == null;
+
+        TextArea recordEditor = new TextArea("Record JSON");
+        recordEditor.setWidthFull();
+        recordEditor.setHeight("220px");
+        try {
+            Map<String, Object> initial = row != null ? row : new LinkedHashMap<>(Map.of());
+            recordEditor.setValue(objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(initial));
+        } catch (Exception ex) {
+            recordEditor.setValue(row != null ? row.toString() : "{}\n");
+        }
+
+        FormLayout form = AdminUi.entityForm(recordEditor);
+
+        Dialog dialog = AdminUi.entityDialog(isNew ? "New record" : "Edit record", form);
+
+        Button save = AdminUi.primary("Save");
+        save.addClickListener(e -> {
+            if (recordEditor.getValue().isBlank()) {
+                Notification.show("Name is required");
+                recordEditor.focus();
+                return;
+            }
+            String collection = collectionSelect.getValue();
+            try {
+                Map<String, Object> payload = objectMapper.readValue(recordEditor.getValue(),
+                        new TypeReference<Map<String, Object>>() {});
+                if (!isNew) {
+                    backendDataService.update(collection, id, payload);
+                    Notification.show("Record updated");
+                } else {
+                    backendDataService.create(collection, payload);
+                    Notification.show("Record created");
                 }
+                dialog.close();
+                loadCollection(collection);
+            } catch (Exception ex) {
+                Notification.show("Invalid JSON or backend request failed");
             }
         });
-        grid.setHeight("350px");
+        Button delete = AdminUi.danger("Delete");
+        delete.setVisible(!isNew);
+        delete.addClickListener(e -> AdminUi.confirmDelete("Delete record?", "This cannot be undone.", () -> {
+            backendDataService.delete(collectionSelect.getValue(), id);
+            Notification.show("Record deleted");
+            dialog.close();
+            loadCollection(collectionSelect.getValue());
+        }));
+        AdminUi.dialogFooter(dialog, delete, save);
 
-        recordEditor.setHeight("220px");
-        recordEditor.setWidthFull();
-
-        add(grid, recordEditor);
-        loadCollection("boards");
+        dialog.open();
+        recordEditor.focus();
     }
 
     private void loadCollection(String collection) {
         List<Map<String, Object>> records = backendDataService.list(collection);
         grid.setItems(records);
-        if (!records.isEmpty()) {
-            grid.select(records.getFirst());
-        } else {
-            selectedRecord = new LinkedHashMap<>();
-            recordEditor.setValue("{}\n");
-        }
     }
 
     private String summarize(Map<String, Object> row) {
@@ -127,36 +159,5 @@ public class SettingsView extends VerticalLayout {
             }
         });
         return String.join(", ", parts.subList(0, Math.min(4, parts.size())));
-    }
-
-    private void saveRecord() {
-        String collection = collectionSelect.getValue();
-        String json = recordEditor.getValue();
-        try {
-            Map<String, Object> payload = objectMapper.readValue(json, new TypeReference<Map<String, Object>>() {});
-            if (selectedRecord != null && selectedRecord.get("id") != null) {
-                Long id = Long.valueOf(String.valueOf(selectedRecord.get("id")));
-                backendDataService.update(collection, id, payload);
-                Notification.show("Record updated");
-            } else {
-                backendDataService.create(collection, payload);
-                Notification.show("Record created");
-            }
-            loadCollection(collection);
-        } catch (Exception ex) {
-            Notification.show("Invalid JSON or backend request failed");
-        }
-    }
-
-    private void deleteRecord() {
-        if (selectedRecord == null || selectedRecord.get("id") == null) {
-            Notification.show("Select a record to delete");
-            return;
-        }
-        String collection = collectionSelect.getValue();
-        Long id = Long.valueOf(String.valueOf(selectedRecord.get("id")));
-        backendDataService.delete(collection, id);
-        Notification.show("Record deleted");
-        loadCollection(collection);
     }
 }

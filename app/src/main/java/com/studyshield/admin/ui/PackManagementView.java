@@ -5,6 +5,7 @@ import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.checkbox.Checkbox;
 import com.vaadin.flow.component.combobox.ComboBox;
 import com.vaadin.flow.component.datepicker.DatePicker;
+import com.vaadin.flow.component.dialog.Dialog;
 import com.vaadin.flow.component.formlayout.FormLayout;
 import com.vaadin.flow.component.grid.Grid;
 import com.vaadin.flow.component.notification.Notification;
@@ -35,14 +36,6 @@ public class PackManagementView extends VerticalLayout {
     private final ComboBox<Map<String, Object>> boardClassSelect = new ComboBox<>("Board class");
     private final ComboBox<Map<String, Object>> offeringSelect = new ComboBox<>("Offering");
     private final Grid<Map<String, Object>> grid = new Grid<>();
-    private final TextField name = new TextField("Pack name");
-    private final TextArea description = new TextArea("Description");
-    private final ComboBox<String> packType = new ComboBox<>("Pack type");
-    private final IntegerField version = new IntegerField("Version");
-    private final Checkbox active = new Checkbox("Enabled (kids can receive this pack)");
-    private final DatePicker validFrom = new DatePicker("Valid from");
-    private final DatePicker validTo = new DatePicker("Valid to");
-    private Map<String, Object> selected;
 
     public PackManagementView(BackendDataService api) {
         this.api = api;
@@ -50,9 +43,9 @@ public class PackManagementView extends VerticalLayout {
         setPadding(false);
 
         Button create = AdminUi.primary("New pack");
-        create.addClickListener(e -> clear());
+        create.addClickListener(e -> openDialog(null));
         VerticalLayout page = AdminUi.page("Content packs",
-                "Freemium packs are what the kid app downloads. Each pack belongs to an offering (board class + subject).",
+                "Freemium packs are what the kid app downloads. Each pack belongs to an offering (board class + subject). Double-click a row to edit.",
                 create);
 
         boardSelect.setItemLabelGenerator(item -> AdminUi.label(item, "name", "code"));
@@ -68,11 +61,6 @@ public class PackManagementView extends VerticalLayout {
         offeringSelect.setWidth("320px");
         offeringSelect.addValueChangeListener(e -> refresh());
 
-        packType.setItems(TYPES);
-        packType.setValue("FREEMIUM");
-        version.setValue(1);
-        active.setValue(true);
-
         grid.addColumn(r -> AdminUi.str(r, "id")).setHeader("ID").setAutoWidth(true);
         grid.addColumn(r -> AdminUi.str(r, "name")).setHeader("Name").setFlexGrow(1);
         grid.addColumn(r -> AdminUi.str(r, "packType")).setHeader("Type");
@@ -80,121 +68,128 @@ public class PackManagementView extends VerticalLayout {
         grid.addColumn(r -> AdminUi.str(r, "validFrom")).setHeader("From");
         grid.addColumn(r -> AdminUi.str(r, "validTo")).setHeader("To");
         grid.setSizeFull();
-        grid.asSingleSelect().addValueChangeListener(e -> edit(e.getValue()));
-
-        FormLayout form = new FormLayout(offeringSelect, name, packType, version, validFrom, validTo, description, active);
-        Button save = AdminUi.primary("Save pack");
-        save.addClickListener(e -> save());
-        Button disable = new Button("Disable", e -> setActive(false));
-        Button enable = new Button("Enable", e -> setActive(true));
-        Button delete = AdminUi.danger("Delete");
-        delete.addClickListener(e -> {
-            if (AdminUi.id(selected) == null) {
-                Notification.show("Select a pack");
-                return;
-            }
-            AdminUi.confirmDelete("Delete pack?", "Quizzes inside the pack will be deleted with it.", () -> {
-                api.delete("content-packs", AdminUi.id(selected));
-                clear();
-                refresh();
-            });
-        });
+        grid.addItemDoubleClickListener(e -> openDialog(e.getItem()));
 
         HorizontalLayout selectors = new HorizontalLayout(boardSelect, boardClassSelect, offeringSelect);
         selectors.setAlignItems(Alignment.END);
-        page.add(selectors, AdminUi.card(grid), AdminUi.card(form, new HorizontalLayout(save, enable, disable, delete)));
+        page.add(selectors, AdminUi.card(grid));
+        page.setFlexGrow(1, page.getComponentAt(1));
         add(page);
+        setFlexGrow(1, page);
+        refresh();
     }
 
     private void loadBoardClasses() {
         Long boardId = AdminUi.id(boardSelect.getValue());
         boardClassSelect.setItems(boardId == null ? List.of() : api.listBy("board-classes", "board", boardId));
         offeringSelect.setItems(List.of());
-        grid.setItems(List.of());
+        refresh();
     }
 
     private void loadOfferings() {
         Long boardClassId = AdminUi.id(boardClassSelect.getValue());
         offeringSelect.setItems(boardClassId == null ? List.of() : api.listBy("offerings", "board-class", boardClassId));
-        grid.setItems(List.of());
+        refresh();
     }
 
     private void refresh() {
         Long offeringId = AdminUi.id(offeringSelect.getValue());
         if (offeringId == null) {
-            grid.setItems(List.of());
+            grid.setItems(api.list("content-packs"));
             return;
         }
         grid.setItems(api.listBy("content-packs", "offering", offeringId));
     }
 
-    private void edit(Map<String, Object> row) {
-        selected = row;
-        if (row == null) {
-            return;
-        }
-        name.setValue(AdminUi.str(row, "name"));
-        description.setValue(AdminUi.str(row, "description"));
-        String type = AdminUi.str(row, "packType");
-        packType.setValue(TYPES.contains(type) ? type : "FREEMIUM");
-        try {
-            version.setValue(Integer.parseInt(AdminUi.str(row, "version")));
-        } catch (NumberFormatException ex) {
-            version.setValue(1);
-        }
-        active.setValue(Boolean.parseBoolean(AdminUi.str(row, "active")));
-        validFrom.setValue(parseDate(AdminUi.str(row, "validFrom")));
-        validTo.setValue(parseDate(AdminUi.str(row, "validTo")));
-    }
+    private void openDialog(Map<String, Object> row) {
+        Long id = AdminUi.id(row);
+        boolean isNew = id == null;
 
-    private void clear() {
-        selected = null;
-        name.clear();
-        description.clear();
-        packType.setValue("FREEMIUM");
-        version.setValue(1);
-        active.setValue(true);
-        validFrom.clear();
-        validTo.clear();
-        grid.deselectAll();
-    }
-
-    private void setActive(boolean value) {
-        if (AdminUi.id(selected) == null) {
-            Notification.show("Select a pack");
-            return;
-        }
-        active.setValue(value);
-        save();
-    }
-
-    private void save() {
-        Long offeringId = AdminUi.id(offeringSelect.getValue());
-        if (offeringId == null) {
-            Notification.show("Choose an offering first");
-            return;
-        }
-        Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("name", name.getValue());
-        payload.put("description", description.getValue());
-        payload.put("offeringId", offeringId);
-        payload.put("version", version.getValue() == null ? 1 : version.getValue());
-        payload.put("active", active.getValue());
-        payload.put("packType", packType.getValue());
-        payload.put("validFrom", validFrom.getValue());
-        payload.put("validTo", validTo.getValue());
-        try {
-            if (AdminUi.id(selected) != null) {
-                api.update("content-packs", AdminUi.id(selected), payload);
-                Notification.show("Pack saved");
-            } else {
-                api.create("content-packs", payload);
-                Notification.show("Pack created");
+        TextField name = new TextField("Pack name");
+        name.setRequired(true);
+        name.setWidthFull();
+        TextArea description = new TextArea("Description");
+        description.setWidthFull();
+        ComboBox<String> packType = new ComboBox<>("Pack type");
+        packType.setItems(TYPES);
+        packType.setWidthFull();
+        IntegerField version = new IntegerField("Version");
+        version.setWidthFull();
+        Checkbox active = new Checkbox("Enabled (kids can receive this pack)");
+        DatePicker validFrom = new DatePicker("Valid from");
+        validFrom.setWidthFull();
+        DatePicker validTo = new DatePicker("Valid to");
+        validTo.setWidthFull();
+        if (row != null) {
+            name.setValue(AdminUi.str(row, "name"));
+            description.setValue(AdminUi.str(row, "description"));
+            String type = AdminUi.str(row, "packType");
+            packType.setValue(TYPES.contains(type) ? type : "FREEMIUM");
+            try {
+                version.setValue(Integer.parseInt(AdminUi.str(row, "version")));
+            } catch (NumberFormatException ex) {
+                version.setValue(1);
             }
-            refresh();
-        } catch (Exception ex) {
-            Notification.show(ex.getMessage());
+            active.setValue(Boolean.parseBoolean(AdminUi.str(row, "active")));
+            validFrom.setValue(parseDate(AdminUi.str(row, "validFrom")));
+            validTo.setValue(parseDate(AdminUi.str(row, "validTo")));
+        } else {
+            packType.setValue("FREEMIUM");
+            version.setValue(1);
+            active.setValue(true);
         }
+
+        FormLayout form = AdminUi.entityForm(name, packType, version, validFrom, validTo, description, active);
+        form.setColspan(description, 2);
+
+        Dialog dialog = AdminUi.entityDialog(isNew ? "New pack" : "Edit pack", form);
+
+        Button save = AdminUi.primary("Save");
+        save.addClickListener(e -> {
+            Long offeringId = AdminUi.id(offeringSelect.getValue());
+            if (offeringId == null) {
+                Notification.show("Choose an offering first");
+                return;
+            }
+            if (name.getValue().isBlank()) {
+                Notification.show("Name is required");
+                name.focus();
+                return;
+            }
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("name", name.getValue().trim());
+            payload.put("description", description.getValue());
+            payload.put("offeringId", offeringId);
+            payload.put("version", version.getValue() == null ? 1 : version.getValue());
+            payload.put("active", active.getValue());
+            payload.put("packType", packType.getValue());
+            payload.put("validFrom", validFrom.getValue());
+            payload.put("validTo", validTo.getValue());
+            try {
+                if (!isNew) {
+                    api.update("content-packs", id, payload);
+                    Notification.show("Pack updated");
+                } else {
+                    api.create("content-packs", payload);
+                    Notification.show("Pack created");
+                }
+                dialog.close();
+                refresh();
+            } catch (Exception ex) {
+                Notification.show(ex.getMessage());
+            }
+        });
+        Button delete = AdminUi.danger("Delete");
+        delete.setVisible(!isNew);
+        delete.addClickListener(e -> AdminUi.confirmDelete("Delete pack?", "Quizzes inside the pack will be deleted with it.", () -> {
+            api.delete("content-packs", id);
+            dialog.close();
+            refresh();
+        }));
+        AdminUi.dialogFooter(dialog, delete, save);
+
+        dialog.open();
+        name.focus();
     }
 
     private static LocalDate parseDate(String raw) {

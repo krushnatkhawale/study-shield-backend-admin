@@ -35,7 +35,7 @@ public class QuestionLibraryView extends VerticalLayout {
         Button create = AdminUi.primary("New question");
         create.addClickListener(e -> openEditor(null));
         VerticalLayout page = AdminUi.page("Question bank",
-                "Edits create a new version. Quizzes always fetch the latest version of a question.",
+                "Edits create a new version. Quizzes always fetch the latest version of a question. Double-click a row to edit.",
                 create);
 
         boardSelect.setItemLabelGenerator(item -> AdminUi.label(item, "name", "code"));
@@ -56,26 +56,16 @@ public class QuestionLibraryView extends VerticalLayout {
         grid.addColumn(r -> AdminUi.str(r, "questionType")).setHeader("Type");
         grid.addColumn(r -> "v" + AdminUi.str(r, "version")).setHeader("Version").setWidth("90px");
         grid.addColumn(r -> AdminUi.str(r, "quizId")).setHeader("Quiz");
-        grid.addComponentColumn(this::actions).setHeader("").setAutoWidth(true);
         grid.setSizeFull();
+        grid.addItemDoubleClickListener(e -> openEditor(e.getItem()));
 
         HorizontalLayout selectors = new HorizontalLayout(boardSelect, boardClassSelect, offeringSelect);
         selectors.setAlignItems(Alignment.END);
         page.add(selectors, AdminUi.card(grid));
+        page.setFlexGrow(1, page.getComponentAt(1));
         add(page);
-    }
-
-    private HorizontalLayout actions(Map<String, Object> question) {
-        Button edit = new Button("Edit", e -> openEditor(question));
-        Button delete = AdminUi.danger("Delete");
-        delete.addClickListener(e -> AdminUi.confirmDelete(
-                "Delete question?",
-                "All versions of this question will be removed.",
-                () -> {
-                    api.delete("questions", AdminUi.id(question));
-                    refresh();
-                }));
-        return new HorizontalLayout(edit, delete);
+        setFlexGrow(1, page);
+        refresh();
     }
 
     private void openEditor(Map<String, Object> question) {
@@ -96,19 +86,19 @@ public class QuestionLibraryView extends VerticalLayout {
         Long boardId = AdminUi.id(boardSelect.getValue());
         boardClassSelect.setItems(boardId == null ? List.of() : api.listBy("board-classes", "board", boardId));
         offeringSelect.setItems(List.of());
-        grid.setItems(List.of());
+        refresh();
     }
 
     private void loadOfferings() {
         Long boardClassId = AdminUi.id(boardClassSelect.getValue());
         offeringSelect.setItems(boardClassId == null ? List.of() : api.listBy("offerings", "board-class", boardClassId));
-        grid.setItems(List.of());
+        refresh();
     }
 
     private void refresh() {
         Long subjectId = getOfferingSubjectId();
         if (subjectId == null) {
-            grid.setItems(List.of());
+            grid.setItems(api.list("questions"));
             return;
         }
         grid.setItems(api.listByPath("questions", "subject", subjectId));

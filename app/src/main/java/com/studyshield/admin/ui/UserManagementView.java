@@ -3,11 +3,10 @@ package com.studyshield.admin.ui;
 import com.studyshield.admin.service.BackendDataService;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.checkbox.Checkbox;
+import com.vaadin.flow.component.dialog.Dialog;
 import com.vaadin.flow.component.formlayout.FormLayout;
 import com.vaadin.flow.component.grid.Grid;
-import com.vaadin.flow.component.html.H2;
 import com.vaadin.flow.component.notification.Notification;
-import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
 import com.vaadin.flow.component.tabs.Tab;
 import com.vaadin.flow.component.tabs.Tabs;
@@ -46,72 +45,57 @@ public class UserManagementView extends VerticalLayout {
 
     private final Grid<Map<String, Object>> adminGrid = new Grid<>();
     private final Grid<Map<String, Object>> clientGrid = new Grid<>();
-    private final FormLayout editor = new FormLayout();
 
-    private final TextField emailField = new TextField("Email");
-    private final TextField nameField = new TextField("Name");
-    private final TextField phoneField = new TextField("Phone");
-    private final PasswordField passwordField = new PasswordField("Password");
-    private final Checkbox activeField = new Checkbox("Active");
-
-    private final Button saveButton = new Button("Save user");
-    private final Button newButton = new Button("New user");
-    private final Button deleteButton = new Button("Delete user");
-
-    private Map<String, Object> selected;
     private boolean adminMode = true;
 
     public UserManagementView(BackendDataService backendDataService) {
         this.backendDataService = backendDataService;
+        setSizeFull();
+        setPadding(false);
 
-        setPadding(true);
-        setSpacing(true);
-        setWidthFull();
-        add(new H2("User management"));
-        add(tabs);
+        Button create = AdminUi.primary("New user");
+        create.addClickListener(e -> openDialog(null));
+        VerticalLayout page = AdminUi.page("User management",
+                "Admin users sign in here; client users sign in on the mobile app. Double-click a row to edit.",
+                create);
+        page.add(tabs);
 
         tabs.setSelectedTab(adminTab);
         configureAdminGrid();
         configureClientGrid();
-
-        passwordField.setPlaceholder("Only needed when creating or resetting");
-        activeField.setValue(true);
-
-        editor.add(emailField, nameField, phoneField, passwordField, activeField);
-        editor.setResponsiveSteps(new FormLayout.ResponsiveStep("0", 2));
-
-        newButton.addClickListener(e -> resetEditor());
-        saveButton.addClickListener(e -> saveUser());
-        deleteButton.addClickListener(e -> deleteUser());
-
-        add(adminGrid, clientGrid, editor, new HorizontalLayout(newButton, saveButton, deleteButton));
-
-        reload();
         tabs.addSelectedChangeListener(e -> switchTab());
+
+        adminGrid.setSizeFull();
+        clientGrid.setSizeFull();
+        adminGrid.addItemDoubleClickListener(e -> openDialog(e.getItem()));
+        clientGrid.addItemDoubleClickListener(e -> openDialog(e.getItem()));
+
+        page.add(AdminUi.card(activeGrid()));
+        page.setFlexGrow(1, page.getComponentAt(2));
+        add(page);
+        setFlexGrow(1, page);
+        reload();
+    }
+
+    private Grid<Map<String, Object>> activeGrid() {
+        return adminMode ? adminGrid : clientGrid;
     }
 
     private void configureAdminGrid() {
-        adminGrid.addColumn(item -> item.getOrDefault("id", "-")).setHeader("ID").setWidth("70px");
-        adminGrid.addColumn(item -> item.getOrDefault("email", "-")).setHeader("Email");
-        adminGrid.addColumn(item -> item.getOrDefault("name", "-")).setHeader("Name");
-        adminGrid.addColumn(item -> item.getOrDefault("phone", "-")).setHeader("Phone");
-        adminGrid.addColumn(item -> item.getOrDefault("active", "-")).setHeader("Active");
-        adminGrid.setSelectionMode(Grid.SelectionMode.SINGLE);
-        adminGrid.asSingleSelect().addValueChangeListener(event -> loadIntoEditor(event.getValue()));
-        adminGrid.setHeight("350px");
-        adminGrid.setVisible(true);
+        adminGrid.addColumn(item -> AdminUi.str(item, "id")).setHeader("ID").setAutoWidth(true);
+        adminGrid.addColumn(item -> AdminUi.str(item, "email")).setHeader("Email").setFlexGrow(1);
+        adminGrid.addColumn(item -> AdminUi.str(item, "name")).setHeader("Name");
+        adminGrid.addColumn(item -> AdminUi.str(item, "phone")).setHeader("Phone");
+        adminGrid.addColumn(item -> AdminUi.str(item, "active")).setHeader("Active");
     }
 
     private void configureClientGrid() {
-        clientGrid.addColumn(item -> item.getOrDefault("id", "-")).setHeader("ID").setWidth("70px");
-        clientGrid.addColumn(item -> item.getOrDefault("email", "-")).setHeader("Email");
-        clientGrid.addColumn(item -> item.getOrDefault("name", "-")).setHeader("Name");
-        clientGrid.addColumn(item -> item.getOrDefault("phone", "-")).setHeader("Phone");
-        clientGrid.addColumn(item -> item.getOrDefault("active", "-")).setHeader("Active");
-        clientGrid.addColumn(item -> item.getOrDefault("createdAt", "-")).setHeader("Created");
-        clientGrid.setSelectionMode(Grid.SelectionMode.SINGLE);
-        clientGrid.asSingleSelect().addValueChangeListener(event -> loadIntoEditor(event.getValue()));
-        clientGrid.setHeight("350px");
+        clientGrid.addColumn(item -> AdminUi.str(item, "id")).setHeader("ID").setAutoWidth(true);
+        clientGrid.addColumn(item -> AdminUi.str(item, "email")).setHeader("Email").setFlexGrow(1);
+        clientGrid.addColumn(item -> AdminUi.str(item, "name")).setHeader("Name");
+        clientGrid.addColumn(item -> AdminUi.str(item, "phone")).setHeader("Phone");
+        clientGrid.addColumn(item -> AdminUi.str(item, "active")).setHeader("Active");
+        clientGrid.addColumn(item -> AdminUi.str(item, "createdAt")).setHeader("Created");
         clientGrid.setVisible(false);
     }
 
@@ -123,16 +107,13 @@ public class UserManagementView extends VerticalLayout {
         adminMode = tabs.getSelectedTab() == adminTab;
         adminGrid.setVisible(adminMode);
         clientGrid.setVisible(!adminMode);
-        resetEditor();
         reload();
     }
 
     private void reload() {
         if (adminMode) {
             adminGrid.setItems(loadAdminUsers());
-            clientGrid.setItems(List.of());
         } else {
-            adminGrid.setItems(List.of());
             clientGrid.setItems(loadClientUsers());
         }
     }
@@ -154,81 +135,86 @@ public class UserManagementView extends VerticalLayout {
         return clients;
     }
 
-    private void loadIntoEditor(Map<String, Object> user) {
-        if (user == null || user.isEmpty()) {
-            return;
-        }
-        selected = user;
-        emailField.setValue(String.valueOf(user.getOrDefault("email", "")));
-        nameField.setValue(String.valueOf(user.getOrDefault("name", "")));
-        phoneField.setValue(String.valueOf(user.getOrDefault("phone", "")));
-        passwordField.clear();
-        activeField.setValue(Boolean.parseBoolean(String.valueOf(user.getOrDefault("active", true))));
-    }
+    private void openDialog(Map<String, Object> row) {
+        Long id = AdminUi.id(row);
+        boolean isNew = id == null;
 
-    private void resetEditor() {
-        selected = null;
-        emailField.clear();
-        nameField.clear();
-        phoneField.clear();
-        passwordField.clear();
-        activeField.setValue(true);
-    }
-
-    private void saveUser() {
-        String email = emailField.getValue().trim();
-        if (email.isBlank()) {
-            Notification.show("Email is required");
-            return;
-        }
-        Map<String, Object> payload = new LinkedHashMap<>();
-        String collection = activeCollection();
-        payload.put("email", email);
-        payload.put("name", nameField.getValue());
-        payload.put("phone", phoneField.getValue());
-        payload.put("active", activeField.getValue());
-        if (!adminMode) {
-            payload.put("role", "PARENT");
-            payload.put("userType", "MOBILE");
+        TextField emailField = new TextField("Email");
+        emailField.setRequired(true);
+        emailField.setWidthFull();
+        TextField nameField = new TextField("Name");
+        nameField.setWidthFull();
+        TextField phoneField = new TextField("Phone");
+        phoneField.setWidthFull();
+        PasswordField passwordField = new PasswordField("Password");
+        passwordField.setWidthFull();
+        passwordField.setPlaceholder("Only needed when creating or resetting");
+        Checkbox activeField = new Checkbox("Active");
+        if (row != null) {
+            emailField.setValue(AdminUi.str(row, "email"));
+            nameField.setValue(AdminUi.str(row, "name"));
+            phoneField.setValue(AdminUi.str(row, "phone"));
+            activeField.setValue(Boolean.parseBoolean(AdminUi.str(row, "active")));
+        } else {
+            activeField.setValue(true);
         }
 
-        try {
-            if (selected != null && selected.get("id") != null) {
-                Long id = Long.valueOf(String.valueOf(selected.get("id")));
-                if (passwordField.getValue() != null && !passwordField.getValue().isBlank()) {
-                    payload.put("password", passwordField.getValue());
-                }
-                backendDataService.update(collection, id, payload);
-                Notification.show("User updated");
-            } else {
-                if (passwordField.getValue() == null || passwordField.getValue().isBlank()) {
-                    Notification.show("Password is required when creating a user");
-                    return;
-                }
-                payload.put("password", passwordField.getValue());
-                backendDataService.create(collection, payload);
-                Notification.show("User created");
+        FormLayout form = AdminUi.entityForm(emailField, nameField, phoneField, passwordField, activeField);
+
+        Dialog dialog = AdminUi.entityDialog(isNew ? "New user" : "Edit user", form);
+
+        Button save = AdminUi.primary("Save");
+        save.addClickListener(e -> {
+            String email = emailField.getValue().trim();
+            if (email.isBlank()) {
+                Notification.show("Email is required");
+                emailField.focus();
+                return;
             }
-            resetEditor();
-            reload();
-        } catch (Exception ex) {
-            Notification.show("Save failed: " + ex.getMessage());
-        }
-    }
-
-    private void deleteUser() {
-        if (selected == null || selected.get("id") == null) {
-            Notification.show("Select a user to delete first");
-            return;
-        }
-        Long id = Long.valueOf(String.valueOf(selected.get("id")));
-        try {
+            Map<String, Object> payload = new LinkedHashMap<>();
+            String collection = activeCollection();
+            payload.put("email", email);
+            payload.put("name", nameField.getValue());
+            payload.put("phone", phoneField.getValue());
+            payload.put("active", activeField.getValue());
+            if (!adminMode) {
+                payload.put("role", "PARENT");
+                payload.put("userType", "MOBILE");
+            }
+            try {
+                if (!isNew) {
+                    if (passwordField.getValue() != null && !passwordField.getValue().isBlank()) {
+                        payload.put("password", passwordField.getValue());
+                    }
+                    backendDataService.update(collection, id, payload);
+                    Notification.show("User updated");
+                } else {
+                    if (passwordField.getValue() == null || passwordField.getValue().isBlank()) {
+                        Notification.show("Password is required when creating a user");
+                        passwordField.focus();
+                        return;
+                    }
+                    payload.put("password", passwordField.getValue());
+                    backendDataService.create(collection, payload);
+                    Notification.show("User created");
+                }
+                dialog.close();
+                reload();
+            } catch (Exception ex) {
+                Notification.show("Save failed: " + ex.getMessage());
+            }
+        });
+        Button delete = AdminUi.danger("Delete");
+        delete.setVisible(!isNew);
+        delete.addClickListener(e -> AdminUi.confirmDelete("Delete user?", "This user will lose access immediately.", () -> {
             backendDataService.delete(activeCollection(), id);
             Notification.show("User deleted");
-            resetEditor();
+            dialog.close();
             reload();
-        } catch (Exception ex) {
-            Notification.show("Delete failed: " + ex.getMessage());
-        }
+        }));
+        AdminUi.dialogFooter(dialog, delete, save);
+
+        dialog.open();
+        emailField.focus();
     }
 }

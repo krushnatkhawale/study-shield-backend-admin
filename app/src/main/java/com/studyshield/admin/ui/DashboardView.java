@@ -28,7 +28,7 @@ public class DashboardView extends VerticalLayout {
             "board-classes", "Board classes",
             "class-levels", "Class levels",
             "subjects", "Subjects",
-            "offerings", "Offerings",
+            "offerings", "Subject mappings",
             "content-packs", "Packs",
             "quizzes", "Quizzes",
             "questions", "Questions"
@@ -56,9 +56,9 @@ public class DashboardView extends VerticalLayout {
         KPI.values().forEach(label -> kpis.add(AdminUi.kpi(label, "…")));
 
         Paragraph hint = new Paragraph(
-                "Work top-down: Board → Board class (ordinal) → Offering (subject) → Pack → Quiz → Questions. "
+                "Work top-down: Board → Board class (ordinal) → Subject mapping (subject) → Pack → Quiz → Questions. "
                         + "A quiz always plays the latest version of each question. "
-                        + "Rebuild catalog drops issued kid bundles so every offering with questions is offered.");
+                        + "Rebuild catalog drops issued kid bundles so every subject mapping with questions is offered.");
         hint.addClassName("ss-muted");
 
         page.add(AdminUi.card(kpis), AdminUi.card(hint));

@@ -1,9 +1,12 @@
 package com.studyshield.admin.ui;
 
 import com.vaadin.flow.component.Component;
+import com.vaadin.flow.component.Key;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.button.ButtonVariant;
 import com.vaadin.flow.component.confirmdialog.ConfirmDialog;
+import com.vaadin.flow.component.dialog.Dialog;
+import com.vaadin.flow.component.formlayout.FormLayout;
 import com.vaadin.flow.component.html.Div;
 import com.vaadin.flow.component.html.H2;
 import com.vaadin.flow.component.html.Paragraph;
@@ -121,5 +124,38 @@ public final class AdminUi {
         Button button = new Button(text);
         button.addThemeVariants(ButtonVariant.LUMO_ERROR);
         return button;
+    }
+
+    /** Canonical entity dialog: modal, 560px / 95vw max, with the form as content. */
+    public static Dialog entityDialog(String title, Component form) {
+        Dialog dialog = new Dialog();
+        dialog.setHeaderTitle(title);
+        dialog.setModal(true);
+        dialog.setDraggable(false);
+        dialog.setWidth("560px");
+        dialog.setMaxWidth("95vw");
+        dialog.add(form);
+        return dialog;
+    }
+
+    /** Canonical form: full-width, 1 column under 480px, 2 columns above. */
+    public static FormLayout entityForm(Component... fields) {
+        FormLayout form = new FormLayout(fields);
+        form.setResponsiveSteps(new FormLayout.ResponsiveStep("0", 1, FormLayout.ResponsiveStep.LabelsPosition.TOP),
+                new FormLayout.ResponsiveStep("480px", 2, FormLayout.ResponsiveStep.LabelsPosition.TOP));
+        form.setWidthFull();
+        return form;
+    }
+
+    /** Canonical footer: Delete + Save + Cancel, right-aligned, ESC cancels. */
+    public static HorizontalLayout dialogFooter(Dialog dialog, Button delete, Button save) {
+        Button cancel = new Button("Cancel", e -> dialog.close());
+        cancel.addClickShortcut(Key.ESCAPE);
+        HorizontalLayout footer = new HorizontalLayout(delete, save, cancel);
+        footer.setWidthFull();
+        footer.setJustifyContentMode(FlexComponent.JustifyContentMode.END);
+        footer.setAlignItems(FlexComponent.Alignment.CENTER);
+        dialog.getFooter().add(footer);
+        return footer;
     }
 }

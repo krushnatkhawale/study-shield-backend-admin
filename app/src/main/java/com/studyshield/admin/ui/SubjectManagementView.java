@@ -1,11 +1,14 @@
 package com.studyshield.admin.ui;
 
 import com.studyshield.admin.service.BackendDataService;
+import com.vaadin.flow.component.Key;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.checkbox.Checkbox;
+import com.vaadin.flow.component.dialog.Dialog;
 import com.vaadin.flow.component.formlayout.FormLayout;
 import com.vaadin.flow.component.grid.Grid;
 import com.vaadin.flow.component.notification.Notification;
+import com.vaadin.flow.component.orderedlayout.FlexComponent;
 import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
 import com.vaadin.flow.component.textfield.IntegerField;
@@ -29,13 +32,7 @@ public class SubjectManagementView extends VerticalLayout {
 
     private final BackendDataService api;
     private final Grid<Map<String, Object>> grid = new Grid<>();
-    private final TextField name = new TextField("Name");
-    private final TextField code = new TextField("Code");
-    private final TextArea description = new TextArea("Description");
-    private final IntegerField displayOrder = new IntegerField("Display order");
-    private final Checkbox active = new Checkbox("Active");
     private final List<Map<String, Object>> rows = new ArrayList<>();
-    private Map<String, Object> selected;
 
     public SubjectManagementView(BackendDataService api) {
         this.api = api;
@@ -43,35 +40,20 @@ public class SubjectManagementView extends VerticalLayout {
         setPadding(false);
 
         Button create = AdminUi.primary("New subject");
-        create.addClickListener(e -> clear());
+        create.addClickListener(e -> openDialog(null));
         VerticalLayout page = AdminUi.page("Subjects",
-                "Global subjects across all boards. Display order is how they appear in the kid app.", create);
+                "Global subjects across all boards. Display order is how they appear in the kid app. Double-click a row to edit.", create);
 
+        grid.addColumn(r -> AdminUi.str(r, "id")).setHeader("ID").setAutoWidth(true);
         grid.addColumn(r -> AdminUi.str(r, "displayOrder")).setHeader("#").setWidth("70px");
         grid.addColumn(r -> AdminUi.str(r, "name")).setHeader("Subject").setFlexGrow(1);
         grid.addColumn(r -> AdminUi.str(r, "code")).setHeader("Code");
         grid.addColumn(r -> AdminUi.str(r, "active")).setHeader("Active");
         grid.addComponentColumn(this::moveButtons).setHeader("Order").setAutoWidth(true);
         grid.setSizeFull();
-        grid.asSingleSelect().addValueChangeListener(e -> edit(e.getValue()));
+        grid.addItemDoubleClickListener(e -> openDialog(e.getItem()));
 
-        FormLayout form = new FormLayout(name, code, displayOrder, description, active);
-        Button save = AdminUi.primary("Save");
-        save.addClickListener(e -> save());
-        Button delete = AdminUi.danger("Delete");
-        delete.addClickListener(e -> {
-            if (AdminUi.id(selected) == null) {
-                Notification.show("Select a subject");
-                return;
-            }
-            AdminUi.confirmDelete("Delete subject?", "Offerings and packs under this subject may break.", () -> {
-                api.delete("subjects", AdminUi.id(selected));
-                clear();
-                refresh();
-            });
-        });
-
-        page.add(AdminUi.card(grid), AdminUi.card(form, new HorizontalLayout(save, delete)));
+        page.add(AdminUi.card(grid));
         add(page);
         refresh();
     }
@@ -116,51 +98,93 @@ public class SubjectManagementView extends VerticalLayout {
         grid.setItems(rows);
     }
 
-    private void edit(Map<String, Object> row) {
-        selected = row;
-        if (row == null) {
-            return;
-        }
-        name.setValue(AdminUi.str(row, "name"));
-        code.setValue(AdminUi.str(row, "code"));
-        description.setValue(AdminUi.str(row, "description"));
-        try {
-            displayOrder.setValue(Integer.parseInt(AdminUi.str(row, "displayOrder")));
-        } catch (NumberFormatException ex) {
-            displayOrder.setValue(1);
-        }
-        active.setValue(Boolean.parseBoolean(AdminUi.str(row, "active")));
-    }
+    private void openDialog(Map<String, Object> row) {
+        Long id = AdminUi.id(row);
+        boolean isNew = id == null;
 
-    private void clear() {
-        selected = null;
-        name.clear();
-        code.clear();
-        description.clear();
-        displayOrder.setValue(rows.size() + 1);
-        active.setValue(true);
-        grid.deselectAll();
-    }
-
-    private void save() {
-        Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("name", name.getValue());
-        payload.put("code", code.getValue().isBlank() ? name.getValue().toUpperCase().replace(' ', '_') : code.getValue());
-        payload.put("description", description.getValue());
-        payload.put("active", active.getValue());
-        payload.put("displayOrder", displayOrder.getValue() == null ? 1 : displayOrder.getValue());
-        try {
-            if (AdminUi.id(selected) != null) {
-                api.update("subjects", AdminUi.id(selected), payload);
-                Notification.show("Subject updated");
-            } else {
-                api.create("subjects", payload);
-                Notification.show("Subject created");
+        TextField name = new TextField("Name");
+        name.setRequired(true);
+        name.setWidthFull();
+        TextField code = new TextField("Code");
+        code.setWidthFull();
+        code.setHelperText("Leave blank to auto-derive from the name.");
+        IntegerField displayOrder = new IntegerField("Display order");
+        displayOrder.setWidthFull();
+        TextArea description = new TextArea("Description");
+        description.setWidthFull();
+        Checkbox active = new Checkbox("Active");
+        if (row != null) {
+            name.setValue(AdminUi.str(row, "name"));
+            code.setValue(AdminUi.str(row, "code"));
+            description.setValue(AdminUi.str(row, "description"));
+            try {
+                displayOrder.setValue(Integer.parseInt(AdminUi.str(row, "displayOrder")));
+            } catch (NumberFormatException ex) {
+                displayOrder.setValue(1);
             }
-            clear();
-            refresh();
-        } catch (Exception ex) {
-            Notification.show(ex.getMessage());
+            active.setValue(Boolean.parseBoolean(AdminUi.str(row, "active")));
+        } else {
+            displayOrder.setValue(rows.size() + 1);
+            active.setValue(true);
         }
+
+        FormLayout form = new FormLayout(name, code, displayOrder, description, active);
+        form.setResponsiveSteps(new FormLayout.ResponsiveStep("0", 1, FormLayout.ResponsiveStep.LabelsPosition.TOP),
+                new FormLayout.ResponsiveStep("480px", 2, FormLayout.ResponsiveStep.LabelsPosition.TOP));
+        form.setColspan(description, 2);
+        form.setWidthFull();
+
+        Dialog dialog = new Dialog();
+        dialog.setHeaderTitle(isNew ? "New subject" : "Edit subject");
+        dialog.setModal(true);
+        dialog.setWidth("560px");
+        dialog.setMaxWidth("95vw");
+        dialog.add(form);
+
+        Button save = AdminUi.primary("Save");
+        save.addClickListener(e -> {
+            if (name.getValue().isBlank()) {
+                Notification.show("Name is required");
+                name.focus();
+                return;
+            }
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("name", name.getValue().trim());
+            payload.put("code", code.getValue().isBlank() ? name.getValue().trim().toUpperCase().replace(' ', '_') : code.getValue().trim());
+            payload.put("description", description.getValue());
+            payload.put("active", active.getValue());
+            payload.put("displayOrder", displayOrder.getValue() == null ? 1 : displayOrder.getValue());
+            try {
+                if (!isNew) {
+                    api.update("subjects", id, payload);
+                    Notification.show("Subject updated");
+                } else {
+                    api.create("subjects", payload);
+                    Notification.show("Subject created");
+                }
+                dialog.close();
+                refresh();
+            } catch (Exception ex) {
+                Notification.show(ex.getMessage());
+            }
+        });
+        Button delete = AdminUi.danger("Delete");
+        delete.setVisible(!isNew);
+        delete.addClickListener(e -> AdminUi.confirmDelete("Delete subject?", "Offerings and packs under this subject may break.", () -> {
+            api.delete("subjects", id);
+            dialog.close();
+            refresh();
+        }));
+        Button cancel = new Button("Cancel", e -> dialog.close());
+        cancel.addClickShortcut(Key.ESCAPE);
+
+        HorizontalLayout footer = new HorizontalLayout(delete, save, cancel);
+        footer.setWidthFull();
+        footer.setJustifyContentMode(FlexComponent.JustifyContentMode.END);
+        footer.setAlignItems(FlexComponent.Alignment.CENTER);
+        dialog.getFooter().add(footer);
+
+        dialog.open();
+        name.focus();
     }
 }

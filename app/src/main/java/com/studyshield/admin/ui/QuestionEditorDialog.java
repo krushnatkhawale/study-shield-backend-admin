@@ -57,9 +57,11 @@ public class QuestionEditorDialog extends Dialog {
         this.question = question;
         this.onSaved = onSaved;
 
-        setHeaderTitle(question != null ? "Edit question (saves a new version)" : "New question");
+        setHeaderTitle(question != null ? "Edit question" : "New question");
         setModal(true);
-        setMinWidth("760px");
+        setDraggable(false);
+        setWidth("560px");
+        setMaxWidth("95vw");
 
         questionText.setWidthFull();
         optionsText.setWidthFull();
@@ -78,29 +80,51 @@ public class QuestionEditorDialog extends Dialog {
 
         FormLayout form = new FormLayout(questionText, questionType, optionsText, correctAnswer,
                 difficulty, points, orderIndex, explanation, subjects);
-        form.setResponsiveSteps(new FormLayout.ResponsiveStep("0", 2));
+        form.setResponsiveSteps(new FormLayout.ResponsiveStep("0", 1, FormLayout.ResponsiveStep.LabelsPosition.TOP),
+                new FormLayout.ResponsiveStep("480px", 2, FormLayout.ResponsiveStep.LabelsPosition.TOP));
         form.setColspan(questionText, 2);
         form.setColspan(optionsText, 2);
         form.setColspan(subjects, 2);
+        form.setWidthFull();
 
+        boolean isNew = question == null;
         Button revisions = new Button("Revisions");
-        revisions.setVisible(question != null);
+        revisions.setVisible(!isNew);
         revisions.addClickListener(e -> showRevisions());
+        Button delete = AdminUi.danger("Delete");
+        delete.setVisible(!isNew);
+        delete.addClickListener(e -> AdminUi.confirmDelete("Delete question?",
+                "All versions of this question will be removed.", () -> {
+                    api.delete("questions", AdminUi.id(question));
+                    if (onSaved != null) {
+                        onSaved.run();
+                    }
+                    close();
+                }));
 
-        Button save = AdminUi.primary(question != null ? "Save new version" : "Create");
+        Button save = AdminUi.primary("Save");
         save.addClickListener(e -> save());
         Button cancel = new Button("Cancel", e -> close());
+        cancel.addClickShortcut(com.vaadin.flow.component.Key.ESCAPE);
 
-        HorizontalLayout footer = new HorizontalLayout(revisions, save, cancel);
+        HorizontalLayout footer = new HorizontalLayout(delete, save, cancel);
         footer.setWidthFull();
         footer.setJustifyContentMode(FlexComponent.JustifyContentMode.END);
         footer.setAlignItems(FlexComponent.Alignment.CENTER);
-        footer.expand(revisions);
 
-        add(form, blacklisted, footer);
+        HorizontalLayout revisionsBar = new HorizontalLayout(revisions);
+        revisionsBar.setWidthFull();
+
+        add(form, blacklisted, revisionsBar);
+        getFooter().add(footer);
         if (question != null) {
             fillFrom(question);
         }
+    }
+
+    public void open() {
+        super.open();
+        questionText.focus();
     }
 
     @SuppressWarnings("unchecked")
@@ -156,6 +180,11 @@ public class QuestionEditorDialog extends Dialog {
     private void save() {
         if (quizId == null) {
             Notification.show("A quiz is required so the question can be stored");
+            return;
+        }
+        if (questionText.getValue().isBlank()) {
+            Notification.show("Name is required");
+            questionText.focus();
             return;
         }
         List<Map<String, Object>> options = new ArrayList<>();
