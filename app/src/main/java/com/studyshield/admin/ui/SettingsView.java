@@ -76,12 +76,14 @@ public class SettingsView extends VerticalLayout {
         grid.addColumn(item -> AdminUi.str(item, "id")).setHeader("ID").setAutoWidth(true);
         grid.addColumn(item -> summarize(item)).setHeader("Summary").setFlexGrow(1);
         grid.setSizeFull();
+        grid.setMinHeight("320px");
         grid.addItemDoubleClickListener(event -> openDialog(event.getItem()));
 
         HorizontalLayout controls = new HorizontalLayout(collectionSelect, refreshButton);
         controls.setAlignItems(Alignment.END);
-        page.add(controls, AdminUi.card(grid));
-        page.setFlexGrow(1, page.getComponentAt(1));
+        com.vaadin.flow.component.Component card = AdminUi.card(grid);
+        page.add(controls, card);
+        page.setFlexGrow(1, card);
         add(page);
         setFlexGrow(1, page);
         loadCollection("boards");

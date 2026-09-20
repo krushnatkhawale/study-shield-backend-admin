@@ -51,10 +51,14 @@ public class SubjectManagementView extends VerticalLayout {
         grid.addColumn(r -> AdminUi.str(r, "active")).setHeader("Active");
         grid.addComponentColumn(this::moveButtons).setHeader("Order").setAutoWidth(true);
         grid.setSizeFull();
+        grid.setMinHeight("320px");
         grid.addItemDoubleClickListener(e -> openDialog(e.getItem()));
 
-        page.add(AdminUi.card(grid));
+        com.vaadin.flow.component.Component card = AdminUi.card(grid);
+        page.add(card);
+        page.setFlexGrow(1, card);
         add(page);
+        setFlexGrow(1, page);
         refresh();
     }
 

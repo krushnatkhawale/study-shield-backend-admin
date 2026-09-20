@@ -68,12 +68,14 @@ public class PackManagementView extends VerticalLayout {
         grid.addColumn(r -> AdminUi.str(r, "validFrom")).setHeader("From");
         grid.addColumn(r -> AdminUi.str(r, "validTo")).setHeader("To");
         grid.setSizeFull();
+        grid.setMinHeight("320px");
         grid.addItemDoubleClickListener(e -> openDialog(e.getItem()));
 
         HorizontalLayout selectors = new HorizontalLayout(boardSelect, boardClassSelect, offeringSelect);
         selectors.setAlignItems(Alignment.END);
-        page.add(selectors, AdminUi.card(grid));
-        page.setFlexGrow(1, page.getComponentAt(1));
+        com.vaadin.flow.component.Component card = AdminUi.card(grid);
+        page.add(selectors, card);
+        page.setFlexGrow(1, card);
         add(page);
         setFlexGrow(1, page);
         refresh();

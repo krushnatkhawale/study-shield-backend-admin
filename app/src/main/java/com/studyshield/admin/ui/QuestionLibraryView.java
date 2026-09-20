@@ -57,12 +57,14 @@ public class QuestionLibraryView extends VerticalLayout {
         grid.addColumn(r -> "v" + AdminUi.str(r, "version")).setHeader("Version").setWidth("90px");
         grid.addColumn(r -> AdminUi.str(r, "quizId")).setHeader("Quiz");
         grid.setSizeFull();
+        grid.setMinHeight("320px");
         grid.addItemDoubleClickListener(e -> openEditor(e.getItem()));
 
         HorizontalLayout selectors = new HorizontalLayout(boardSelect, boardClassSelect, offeringSelect);
         selectors.setAlignItems(Alignment.END);
-        page.add(selectors, AdminUi.card(grid));
-        page.setFlexGrow(1, page.getComponentAt(1));
+        com.vaadin.flow.component.Component card = AdminUi.card(grid);
+        page.add(selectors, card);
+        page.setFlexGrow(1, card);
         add(page);
         setFlexGrow(1, page);
         refresh();

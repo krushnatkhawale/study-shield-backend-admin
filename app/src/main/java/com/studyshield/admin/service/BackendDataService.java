@@ -253,6 +253,29 @@ public class BackendDataService {
         }
     }
 
+    /** Fetch a collection with a single query parameter, e.g. goals/progress?childName=Aarav. */
+    public List<Map<String, Object>> listByQuery(String relativePath, String param, String value) {
+        try {
+            String body = restClient.get()
+                    .uri(uriBuilder -> uriBuilder.path("/api/v1/" + relativePath)
+                            .queryParam(param, value).build())
+                    .retrieve()
+                    .body(String.class);
+            if (body == null || body.isBlank()) {
+                return List.of();
+            }
+            return objectMapper.readValue(body, new TypeReference<List<Map<String, Object>>>() {});
+        } catch (RestClientResponseException ex) {
+            invalidateIfAuthFailure(ex);
+            log.warn("GET /api/v1/{}?{}={} failed ({} {})", relativePath, param, value,
+                    ex.getStatusCode().value(), ex.getStatusCode());
+            return List.of();
+        } catch (Exception ex) {
+            log.warn("GET /api/v1/{}?{}={} failed: {}", relativePath, param, value, ex.toString());
+            return List.of();
+        }
+    }
+
     /** Fetch resources that belong to a parent resource, e.g. subjects for a class grade. */
     public List<Map<String, Object>> listBy(String collection, String childPath, Long parentId) {
         try {

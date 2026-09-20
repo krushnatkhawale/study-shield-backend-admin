@@ -93,6 +93,7 @@ public class MainLayout extends AppLayout {
         ops.setLabel("Operations");
         ops.addItem(
                 new SideNavItem("Home", DashboardView.class, VaadinIcon.DASHBOARD.create()),
+                new SideNavItem("Goals", GoalsManagementView.class, VaadinIcon.TROPHY.create()),
                 new SideNavItem("Users", UserManagementView.class, VaadinIcon.USERS.create()),
                 new SideNavItem("Advanced data", SettingsView.class, VaadinIcon.DATABASE.create())
         );

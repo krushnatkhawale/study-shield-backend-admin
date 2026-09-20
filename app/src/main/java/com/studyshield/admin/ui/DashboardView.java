@@ -31,7 +31,8 @@ public class DashboardView extends VerticalLayout {
             "offerings", "Subject mappings",
             "content-packs", "Packs",
             "quizzes", "Quizzes",
-            "questions", "Questions"
+            "questions", "Questions",
+            "goals", "Goals"
     );
 
     private final BackendDataService backendDataService;
