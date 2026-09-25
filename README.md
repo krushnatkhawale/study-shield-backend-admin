@@ -1,5 +1,7 @@
 # StudyShield Admin
 
+[![CI](https://github.com/krushnatkhawale/study-shield-backend-admin/actions/workflows/ci.yml/badge.svg)](https://github.com/krushnatkhawale/study-shield-backend-admin/actions/workflows/ci.yml)
+
 Vaadin 24 console for the StudyShield backend: boards, classes, subjects, packs, quizzes and the question bank.
 
 Login uses the **backend admin account** (`/api/auth/admin-signin`). There is no local `admin/admin123` user.
