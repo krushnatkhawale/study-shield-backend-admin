@@ -404,4 +404,99 @@ public class BackendDataService {
                     + ex.getStatusCode().value() + ")", ex);
         }
     }
+
+    /* ---------------- academic-structure restore loop ---------------- */
+
+    private static final String ACADEMIC_STRUCTURE_PATH = "/api/v1/academic-structure";
+
+    /** Current row counts, the configured pinned ref, and where the load source points. */
+    public Map<String, Object> academicStructureStatus() {
+        try {
+            String body = restClient.get()
+                    .uri(ACADEMIC_STRUCTURE_PATH + "/status")
+                    .retrieve()
+                    .body(String.class);
+            if (body == null || body.isBlank()) {
+                return new LinkedHashMap<>();
+            }
+            return objectMapper.readValue(body, new TypeReference<>() {});
+        } catch (RestClientResponseException ex) {
+            invalidateIfAuthFailure(ex);
+            throw new IllegalStateException("Could not load academic-structure status (HTTP "
+                    + ex.getStatusCode().value() + ")", ex);
+        } catch (Exception ex) {
+            throw new IllegalStateException("Could not load academic-structure status", ex);
+        }
+    }
+
+    /**
+     * Export rows as pretty JSON text (the file an operator downloads and commits).
+     * {@code entity} null or "all" exports every entity in load order.
+     */
+    public String academicStructureExport(String entity) {
+        try {
+            String uri = (entity == null || entity.isBlank() || "all".equalsIgnoreCase(entity))
+                    ? ACADEMIC_STRUCTURE_PATH + "/export"
+                    : ACADEMIC_STRUCTURE_PATH + "/export/" + entity;
+            String body = restClient.get().uri(uri).retrieve().body(String.class);
+            return body == null ? "[]" : body;
+        } catch (RestClientResponseException ex) {
+            invalidateIfAuthFailure(ex);
+            throw new IllegalStateException("Could not export academic structure (HTTP "
+                    + ex.getStatusCode().value() + ")", ex);
+        } catch (Exception ex) {
+            throw new IllegalStateException("Could not export academic structure", ex);
+        }
+    }
+
+    /**
+     * Load structure rows. With {@code bodyJson} null the backend fetches its configured
+     * source (GitHub at the pinned ref, or classpath in regression profiles); with a body
+     * it loads exactly those rows (an uploaded file for one entity).
+     */
+    public Map<String, Object> academicStructureLoad(String entity, boolean dryRun, String bodyJson) {
+        try {
+            String path = (entity == null || entity.isBlank())
+                    ? ACADEMIC_STRUCTURE_PATH + "/load"
+                    : ACADEMIC_STRUCTURE_PATH + "/load/" + entity;
+            var request = restClient.post()
+                    .uri(uriBuilder -> uriBuilder.path(path).queryParam("dryRun", dryRun).build())
+                    .contentType(MediaType.APPLICATION_JSON);
+            if (bodyJson != null && !bodyJson.isBlank()) {
+                request = request.body(bodyJson);
+            }
+            String response = request.retrieve().body(String.class);
+            if (response == null || response.isBlank()) {
+                return new LinkedHashMap<>();
+            }
+            return objectMapper.readValue(response, new TypeReference<>() {});
+        } catch (RestClientResponseException ex) {
+            invalidateIfAuthFailure(ex);
+            throw new IllegalStateException("Could not load academic structure (HTTP "
+                    + ex.getStatusCode().value() + "): " + ex.getResponseBodyAsString(), ex);
+        } catch (Exception ex) {
+            throw new IllegalStateException("Could not load academic structure", ex);
+        }
+    }
+
+    /** Purge rows (never tables) for one entity or "all" — requires the backend's confirm flag. */
+    public Map<String, Object> academicStructurePurge(String entity) {
+        try {
+            String response = restClient.delete()
+                    .uri(uriBuilder -> uriBuilder.path(ACADEMIC_STRUCTURE_PATH + "/" + entity)
+                            .queryParam("confirm", true).build())
+                    .retrieve()
+                    .body(String.class);
+            if (response == null || response.isBlank()) {
+                return new LinkedHashMap<>();
+            }
+            return objectMapper.readValue(response, new TypeReference<>() {});
+        } catch (RestClientResponseException ex) {
+            invalidateIfAuthFailure(ex);
+            throw new IllegalStateException("Could not purge academic structure (HTTP "
+                    + ex.getStatusCode().value() + "): " + ex.getResponseBodyAsString(), ex);
+        } catch (Exception ex) {
+            throw new IllegalStateException("Could not purge academic structure", ex);
+        }
+    }
 }
